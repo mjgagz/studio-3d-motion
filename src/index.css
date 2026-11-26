@@ -168,6 +168,21 @@ body,
   letter-spacing: -0.01em;
 }
 
+/* Subtle top-right creator watermark */
+.creator-mark {
+  position: absolute;
+  top: 20px;
+  right: 18px;
+  z-index: 10;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: rgba(15, 23, 42, 0.42);
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
 /* Bottom floating translucent HUD */
 .hud-anchor {
   position: absolute;

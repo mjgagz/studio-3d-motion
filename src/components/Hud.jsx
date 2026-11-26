@@ -42,6 +42,11 @@ export default function Hud({
         </div>
       )}
 
+      {/* Subtle creator signature (top-right) */}
+      <div className="creator-mark" aria-label="Diseñado por Marco Jiménez">
+        Diseñado por Marco Jiménez
+      </div>
+
       {/* Floating translucent collapsible bottom HUD */}
       <div className={`hud-anchor ${collapsed ? 'is-collapsed' : ''}`}>
         {collapsed ? (
