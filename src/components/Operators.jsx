@@ -1,31 +1,32 @@
 import { useMemo } from 'react';
+import { RoundedBox } from '@react-three/drei';
 
-// Plush matte navy fleece hoodie palette
-const FLEECE = { color: '#1d3658', roughness: 0.96, metalness: 0.0 };
-const FLEECE_RIB = { color: '#152842', roughness: 0.95, metalness: 0.0 };
-const FLEECE_HOOD = { color: '#19304f', roughness: 0.97, metalness: 0.0 };
-const PANTS = { color: '#242933', roughness: 0.86, metalness: 0.02 };
-const SHOE_UPPER = { color: '#1a1e24', roughness: 0.72, metalness: 0.04 };
-const SHOE_SOLE = { color: '#d8dde5', roughness: 0.85, metalness: 0.0 };
-const GLOVE = { color: '#f1f5f9', roughness: 0.48, metalness: 0.02 };
+// Reference-matched Pixar-clean studio palette (no cap)
+const HOODIE = { color: '#2f4261', roughness: 0.96, metalness: 0.0 };
+const HOODIE_RIB = { color: '#25354f', roughness: 0.95, metalness: 0.0 };
+const HOODIE_HOOD = { color: '#2a3c59', roughness: 0.97, metalness: 0.0 };
+const WHITE_TEE = { color: '#f5f7fa', roughness: 0.88, metalness: 0.0 };
+const ZIPPER = { color: '#c4ccd6', roughness: 0.35, metalness: 0.72 };
+const CARGO_PANTS = { color: '#424348', roughness: 0.88, metalness: 0.02 };
+const CARGO_POCKET = { color: '#3a3b40', roughness: 0.9, metalness: 0.02 };
+const WHITE_SNEAKER = { color: '#f4f6f9', roughness: 0.62, metalness: 0.02 };
+const SNEAKER_SOLE = { color: '#dde2e9', roughness: 0.78, metalness: 0.0 };
 
-const SKIN_TONES = ['#dca989', '#d49e7c', '#c9916f', '#dfb091', '#cf9876'];
-const HAIR_TONES = ['#342116', '#231b17', '#2f221b', '#1b1817', '#3a291f'];
+const SKIN_TONES = ['#ebb99d', '#e8b496', '#e3ad8f', '#ecbc9f', '#e5b092'];
+const HAIR_TONES = ['#3b2519', '#382418', '#2d1e15', '#422a1c', '#332117'];
 
-// Sculpted human head with subtle ears, nose, and eyes
-function HumanHead({ y, skinColor, hairColor, isCurlyWoman = false, tiltX = 0.16, turnY = 0 }) {
-  // Deterministic curly hair clusters ("chinos") cascading around crown, sides, and back
+// Expressive Pixar-clean head (no cap; curly hair for Zebra woman, layered wavy hair for others)
+function StylizedHead({ y, skinColor, hairColor, isCurlyWoman = false, tiltX = 0.14, turnY = 0 }) {
   const curls = useMemo(() => {
     if (!isCurlyWoman) return [];
     const list = [];
-    // Crown & top volume curls
     const rings = [
-      { y: 0.095, r: 0.055, count: 6, size: 0.042 },
-      { y: 0.065, r: 0.098, count: 10, size: 0.044 },
-      { y: 0.015, r: 0.115, count: 10, size: 0.045, arcStart: 0.45, arcEnd: Math.PI * 2 - 0.45 },
-      { y: -0.042, r: 0.118, count: 9, size: 0.046, arcStart: 0.65, arcEnd: Math.PI * 2 - 0.65 },
-      { y: -0.098, r: 0.116, count: 8, size: 0.044, arcStart: 0.85, arcEnd: Math.PI * 2 - 0.85 },
-      { y: -0.145, r: 0.11, count: 6, size: 0.04, arcStart: 1.05, arcEnd: Math.PI * 2 - 1.05 },
+      { y: 0.115, r: 0.065, count: 6, size: 0.048 },
+      { y: 0.078, r: 0.115, count: 10, size: 0.05 },
+      { y: 0.018, r: 0.132, count: 10, size: 0.05, arcStart: 0.48, arcEnd: Math.PI * 2 - 0.48 },
+      { y: -0.048, r: 0.134, count: 9, size: 0.052, arcStart: 0.68, arcEnd: Math.PI * 2 - 0.68 },
+      { y: -0.112, r: 0.13, count: 8, size: 0.048, arcStart: 0.88, arcEnd: Math.PI * 2 - 0.88 },
+      { y: -0.165, r: 0.122, count: 6, size: 0.044, arcStart: 1.08, arcEnd: Math.PI * 2 - 1.08 },
     ];
     rings.forEach((ring, rIdx) => {
       const start = ring.arcStart ?? 0;
@@ -33,94 +34,154 @@ function HumanHead({ y, skinColor, hairColor, isCurlyWoman = false, tiltX = 0.16
       for (let i = 0; i < ring.count; i++) {
         const frac = ring.count === 1 ? 0.5 : i / (ring.arcStart ? ring.count - 1 : ring.count);
         const angle = start + frac * (end - start) + (rIdx % 2) * 0.14;
-        // Local +Z is face forward, so angle=0 is +Z; rotate so gap is on +Z face
         const x = Math.sin(angle) * ring.r;
-        const z = Math.cos(angle) * ring.r - 0.012;
+        const z = Math.cos(angle) * ring.r - 0.014;
         const jitterY = ((i * 7 + rIdx * 3) % 5 - 2) * 0.004;
         const jitterS = 0.88 + ((i * 5 + rIdx) % 4) * 0.08;
         list.push({ pos: [x, ring.y + jitterY, z], radius: ring.size * jitterS });
       }
     });
-    // Soft front framing side curls
-    list.push({ pos: [-0.088, 0.052, 0.064], radius: 0.036 });
-    list.push({ pos: [0.088, 0.052, 0.064], radius: 0.036 });
-    list.push({ pos: [-0.098, -0.005, 0.052], radius: 0.038 });
-    list.push({ pos: [0.098, -0.005, 0.052], radius: 0.038 });
+    // Framing side curls
+    list.push({ pos: [-0.102, 0.06, 0.072], radius: 0.04 });
+    list.push({ pos: [0.102, 0.06, 0.072], radius: 0.04 });
+    list.push({ pos: [-0.112, -0.006, 0.058], radius: 0.042 });
+    list.push({ pos: [0.112, -0.006, 0.058], radius: 0.042 });
     return list;
   }, [isCurlyWoman]);
 
   return (
     <group position={[0, y, 0.025]} rotation={[tiltX, turnY, 0]}>
-      {/* Natural neck */}
-      <mesh position={[0, -0.105, -0.005]} castShadow>
-        <cylinderGeometry args={[0.04, 0.048, 0.09, 12]} />
-        <meshStandardMaterial color={skinColor} roughness={0.72} />
+      {/* Smooth neck */}
+      <mesh position={[0, -0.125, -0.006]} castShadow>
+        <cylinderGeometry args={[0.042, 0.048, 0.1, 14]} />
+        <meshStandardMaterial color={skinColor} roughness={0.68} />
       </mesh>
 
-      {/* Oval sculpted cranium & jaw */}
-      <mesh scale={[0.9, 1.08, 0.96]} castShadow receiveShadow>
-        <sphereGeometry args={[0.1, 18, 16]} />
-        <meshStandardMaterial color={skinColor} roughness={0.7} />
+      {/* Pixar-proportion sculpted head */}
+      <mesh scale={[0.92, 1.06, 0.96]} castShadow receiveShadow>
+        <sphereGeometry args={[0.118, 20, 18]} />
+        <meshStandardMaterial color={skinColor} roughness={0.66} />
       </mesh>
-      {/* Subtle chin/jaw contour */}
-      <mesh position={[0, -0.052, 0.026]} scale={[0.72, 0.65, 0.78]}>
-        <sphereGeometry args={[0.068, 12, 10]} />
-        <meshStandardMaterial color={skinColor} roughness={0.7} />
-      </mesh>
-
-      {/* Subtle nose */}
-      <mesh position={[0, -0.01, 0.096]} rotation={[0.25, 0, 0]}>
-        <capsuleGeometry args={[0.011, 0.022, 4, 8]} />
-        <meshStandardMaterial color={skinColor} roughness={0.72} />
+      {/* Soft rounded chin */}
+      <mesh position={[0, -0.068, 0.032]} scale={[0.7, 0.62, 0.78]}>
+        <sphereGeometry args={[0.072, 14, 12]} />
+        <meshStandardMaterial color={skinColor} roughness={0.66} />
       </mesh>
 
-      {/* Subtle minimalist eyes */}
-      <mesh position={[-0.032, 0.012, 0.086]}>
-        <sphereGeometry args={[0.009, 8, 8]} />
-        <meshStandardMaterial color="#1f242c" roughness={0.35} />
+      {/* Subtle warm rosy cheeks */}
+      <mesh position={[-0.058, -0.022, 0.092]} scale={[1.2, 0.7, 0.35]}>
+        <sphereGeometry args={[0.022, 10, 8]} />
+        <meshStandardMaterial color="#e69888" roughness={0.85} transparent opacity={0.45} />
       </mesh>
-      <mesh position={[0.032, 0.012, 0.086]}>
-        <sphereGeometry args={[0.009, 8, 8]} />
-        <meshStandardMaterial color="#1f242c" roughness={0.35} />
+      <mesh position={[0.058, -0.022, 0.092]} scale={[1.2, 0.7, 0.35]}>
+        <sphereGeometry args={[0.022, 10, 8]} />
+        <meshStandardMaterial color="#e69888" roughness={0.85} transparent opacity={0.45} />
+      </mesh>
+
+      {/* Soft sculpted nose */}
+      <mesh position={[0, -0.012, 0.112]} rotation={[0.22, 0, 0]}>
+        <capsuleGeometry args={[0.013, 0.02, 6, 10]} />
+        <meshStandardMaterial color={skinColor} roughness={0.68} />
+      </mesh>
+
+      {/* Expressive Pixar-style eyes (sclera + brown iris + pupil + highlight) */}
+      {[-1, 1].map((side) => (
+        <group key={`eye-${side}`} position={[side * 0.042, 0.016, 0.098]} rotation={[0, side * 0.18, 0]}>
+          {/* White sclera */}
+          <mesh scale={[1.05, 1.15, 0.6]}>
+            <sphereGeometry args={[0.022, 12, 10]} />
+            <meshStandardMaterial color="#ffffff" roughness={0.18} />
+          </mesh>
+          {/* Warm brown iris */}
+          <mesh position={[0, 0, 0.01]} scale={[1.0, 1.08, 0.55]}>
+            <sphereGeometry args={[0.014, 12, 10]} />
+            <meshStandardMaterial color="#4a2c18" roughness={0.15} />
+          </mesh>
+          {/* Dark pupil */}
+          <mesh position={[0, 0, 0.016]} scale={[1, 1, 0.5]}>
+            <sphereGeometry args={[0.0085, 10, 8]} />
+            <meshStandardMaterial color="#111318" roughness={0.1} />
+          </mesh>
+          {/* Specular catchlight */}
+          <mesh position={[0.005, 0.006, 0.019]}>
+            <sphereGeometry args={[0.0032, 6, 6]} />
+            <meshBasicMaterial color="#ffffff" />
+          </mesh>
+          {/* Eyebrow */}
+          <RoundedBox
+            args={[0.044, 0.011, 0.01]}
+            radius={0.004}
+            smoothness={2}
+            position={[0, 0.036, 0.008]}
+            rotation={[0, 0, side * -0.08]}
+          >
+            <meshStandardMaterial color={hairColor} roughness={0.85} />
+          </RoundedBox>
+        </group>
+      ))}
+
+      {/* Subtle warm smile */}
+      <mesh position={[0, -0.056, 0.104]} rotation={[0.1, 0, Math.PI]}>
+        <torusGeometry args={[0.022, 0.0035, 6, 12, Math.PI * 0.72]} />
+        <meshStandardMaterial color="#b96d5c" roughness={0.7} />
       </mesh>
 
       {/* Ears */}
-      <mesh position={[-0.09, -0.005, -0.005]} scale={[0.45, 1, 0.7]}>
-        <sphereGeometry args={[0.022, 8, 8]} />
-        <meshStandardMaterial color={skinColor} roughness={0.72} />
+      <mesh position={[-0.108, -0.006, -0.006]} scale={[0.45, 1, 0.72]}>
+        <sphereGeometry args={[0.026, 10, 8]} />
+        <meshStandardMaterial color={skinColor} roughness={0.68} />
       </mesh>
-      <mesh position={[0.09, -0.005, -0.005]} scale={[0.45, 1, 0.7]}>
-        <sphereGeometry args={[0.022, 8, 8]} />
-        <meshStandardMaterial color={skinColor} roughness={0.72} />
+      <mesh position={[0.108, -0.006, -0.006]} scale={[0.45, 1, 0.72]}>
+        <sphereGeometry args={[0.026, 10, 8]} />
+        <meshStandardMaterial color={skinColor} roughness={0.68} />
       </mesh>
 
-      {/* Hair */}
+      {/* Hair (NO cap) */}
       {isCurlyWoman ? (
         <group name="curly-hair">
-          {/* Base crown under curls */}
-          <mesh position={[0, 0.025, -0.018]} scale={[0.96, 1.05, 1.02]} castShadow>
-            <sphereGeometry args={[0.104, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.65]} />
-            <meshStandardMaterial color={hairColor} roughness={0.92} />
+          <mesh position={[0, 0.028, -0.02]} scale={[0.98, 1.06, 1.04]} castShadow>
+            <sphereGeometry args={[0.122, 16, 14, 0, Math.PI * 2, 0, Math.PI * 0.65]} />
+            <meshStandardMaterial color={hairColor} roughness={0.9} />
           </mesh>
-          {/* Individual curly hair ringlets ("chinos") */}
           {curls.map((c, idx) => (
             <mesh key={idx} position={c.pos} castShadow>
               <sphereGeometry args={[c.radius, 10, 10]} />
-              <meshStandardMaterial color={hairColor} roughness={0.93} />
+              <meshStandardMaterial color={hairColor} roughness={0.92} />
             </mesh>
           ))}
         </group>
       ) : (
-        <group name="short-hair">
-          {/* Natural layered short hair */}
-          <mesh position={[0, 0.026, -0.012]} scale={[0.95, 1.06, 1.0]} castShadow>
-            <sphereGeometry args={[0.103, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.56]} />
-            <meshStandardMaterial color={hairColor} roughness={0.9} />
+        <group name="styled-brown-hair">
+          {/* Full natural crown */}
+          <mesh position={[0, 0.032, -0.015]} scale={[0.98, 1.04, 1.04]} castShadow>
+            <sphereGeometry args={[0.122, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.58]} />
+            <meshStandardMaterial color={hairColor} roughness={0.88} />
           </mesh>
-          {/* Back hairline taper */}
-          <mesh position={[0, -0.02, -0.055]} scale={[0.88, 0.85, 0.65]} castShadow>
-            <sphereGeometry args={[0.088, 12, 10]} />
-            <meshStandardMaterial color={hairColor} roughness={0.9} />
+          {/* Soft wavy front bangs / tufts (matching reference without cap) */}
+          <mesh position={[-0.045, 0.095, 0.078]} rotation={[0.35, 0.25, -0.25]} scale={[1.3, 0.65, 0.9]} castShadow>
+            <sphereGeometry args={[0.042, 10, 10]} />
+            <meshStandardMaterial color={hairColor} roughness={0.88} />
+          </mesh>
+          <mesh position={[0.035, 0.1, 0.082]} rotation={[0.35, -0.2, 0.22]} scale={[1.35, 0.65, 0.9]} castShadow>
+            <sphereGeometry args={[0.044, 10, 10]} />
+            <meshStandardMaterial color={hairColor} roughness={0.88} />
+          </mesh>
+          <mesh position={[0, 0.12, 0.02]} scale={[1.45, 0.65, 1.15]} castShadow>
+            <sphereGeometry args={[0.068, 12, 10]} />
+            <meshStandardMaterial color={hairColor} roughness={0.88} />
+          </mesh>
+          {/* Side/back tousled locks */}
+          <mesh position={[-0.105, 0.02, -0.02]} scale={[0.55, 0.95, 0.85]} castShadow>
+            <sphereGeometry args={[0.055, 10, 8]} />
+            <meshStandardMaterial color={hairColor} roughness={0.88} />
+          </mesh>
+          <mesh position={[0.105, 0.02, -0.02]} scale={[0.55, 0.95, 0.85]} castShadow>
+            <sphereGeometry args={[0.055, 10, 8]} />
+            <meshStandardMaterial color={hairColor} roughness={0.88} />
+          </mesh>
+          <mesh position={[0, -0.022, -0.072]} scale={[0.92, 0.88, 0.65]} castShadow>
+            <sphereGeometry args={[0.095, 12, 10]} />
+            <meshStandardMaterial color={hairColor} roughness={0.88} />
           </mesh>
         </group>
       )}
@@ -128,245 +189,313 @@ function HumanHead({ y, skinColor, hairColor, isCurlyWoman = false, tiltX = 0.16
   );
 }
 
-// Sculpted plush fleece hoodie torso with draped hood, kangaroo pocket, and ribbed hem
-function FleeceHoodieTorso({ slim = false }) {
-  const wScale = slim ? 0.88 : 1.0;
+// Open zip-up navy plush fleece hoodie over a crisp white crew-neck t-shirt
+function OpenZipHoodieTorso({ slim = false }) {
+  const w = slim ? 0.88 : 1.0;
 
   return (
     <group>
-      {/* Upper chest / shoulders (soft rounded fleece silhouette) */}
-      <mesh position={[0, 0.34, 0]} scale={[1.05 * wScale, 0.85, 0.64]} castShadow receiveShadow>
-        <sphereGeometry args={[0.185, 16, 14]} />
-        <meshStandardMaterial {...FLEECE} />
+      {/* Inner crisp white crew-neck t-shirt */}
+      <mesh position={[0, 0.22, 0.015]} scale={[0.92 * w, 1.0, 0.6]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.165, 0.155, 0.42, 16]} />
+        <meshStandardMaterial {...WHITE_TEE} />
+      </mesh>
+      {/* White t-shirt crew collar */}
+      <mesh position={[0, 0.435, 0.015]} rotation={[0.12, 0, 0]}>
+        <torusGeometry args={[0.064, 0.014, 8, 16]} />
+        <meshStandardMaterial {...WHITE_TEE} />
       </mesh>
 
-      {/* Main plush hoodie body */}
-      <mesh position={[0, 0.21, 0]} scale={[1.0 * wScale, 1.0, 0.62]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.182, 0.172, 0.34, 16]} />
-        <meshStandardMaterial {...FLEECE} />
+      {/* Open zip-up navy fleece hoodie back & sides */}
+      <mesh position={[0, 0.22, -0.018]} scale={[1.02 * w, 1.0, 0.62]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.178, 0.168, 0.37, 18, 1, false, Math.PI * 0.22, Math.PI * 1.56]} />
+        <meshStandardMaterial {...HOODIE} side={2} />
       </mesh>
 
-      {/* Ribbed elastic bottom hem */}
-      <mesh position={[0, 0.035, 0]} scale={[1.0 * wScale, 1.0, 0.62]} castShadow>
-        <cylinderGeometry args={[0.174, 0.168, 0.055, 16]} />
-        <meshStandardMaterial {...FLEECE_RIB} />
+      {/* Left & right open front hoodie panels framing the white tee */}
+      {[-1, 1].map((side) => (
+        <group key={`panel-${side}`}>
+          {/* Front fleece panel */}
+          <RoundedBox
+            args={[0.115 * w, 0.38, 0.065]}
+            radius={0.024}
+            smoothness={2}
+            position={[side * 0.112 * w, 0.22, 0.088]}
+            rotation={[0, side * -0.18, 0]}
+            castShadow
+            receiveShadow
+          >
+            <meshStandardMaterial {...HOODIE} />
+          </RoundedBox>
+
+          {/* Metallic silver zipper trim along inner vertical opening */}
+          <mesh position={[side * 0.056 * w, 0.215, 0.118]}>
+            <boxGeometry args={[0.01, 0.37, 0.012]} />
+            <meshStandardMaterial {...ZIPPER} />
+          </mesh>
+
+          {/* Split front pocket on each side */}
+          <RoundedBox
+            args={[0.09 * w, 0.13, 0.025]}
+            radius={0.012}
+            smoothness={2}
+            position={[side * 0.115 * w, 0.11, 0.115]}
+            rotation={[0, side * -0.22, 0]}
+            castShadow
+          >
+            <meshStandardMaterial {...HOODIE_HOOD} />
+          </RoundedBox>
+
+          {/* Ribbed bottom hem segment */}
+          <RoundedBox
+            args={[0.12 * w, 0.052, 0.072]}
+            radius={0.018}
+            smoothness={2}
+            position={[side * 0.11 * w, 0.025, 0.085]}
+            rotation={[0, side * -0.18, 0]}
+            castShadow
+          >
+            <meshStandardMaterial {...HOODIE_RIB} />
+          </RoundedBox>
+
+          {/* Navy drawstring hanging along each front edge */}
+          <mesh position={[side * 0.062 * w, 0.35, 0.122]} rotation={[0.06, 0, side * -0.04]}>
+            <cylinderGeometry args={[0.0045, 0.0045, 0.15, 6]} />
+            <meshStandardMaterial {...HOODIE_RIB} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Back ribbed bottom hem */}
+      <mesh position={[0, 0.025, -0.018]} scale={[1.02 * w, 1.0, 0.62]} castShadow>
+        <cylinderGeometry args={[0.172, 0.166, 0.052, 16, 1, false, Math.PI * 0.25, Math.PI * 1.5]} />
+        <meshStandardMaterial {...HOODIE_RIB} side={2} />
       </mesh>
 
-      {/* Front kangaroo pocket pouch */}
-      <mesh position={[0, 0.11, 0.098]} scale={[0.92 * wScale, 0.65, 0.28]} castShadow>
-        <sphereGeometry args={[0.135, 12, 10]} />
-        <meshStandardMaterial {...FLEECE_HOOD} />
+      {/* Rounded upper shoulders */}
+      <mesh position={[0, 0.375, -0.01]} scale={[1.06 * w, 0.72, 0.62]} castShadow>
+        <sphereGeometry args={[0.175, 16, 12]} />
+        <meshStandardMaterial {...HOODIE} />
       </mesh>
 
-      {/* Soft hoodie neckline collar */}
-      <mesh position={[0, 0.455, 0.01]} rotation={[0.12, 0, 0]} castShadow>
-        <torusGeometry args={[0.072, 0.024, 10, 18]} />
-        <meshStandardMaterial {...FLEECE_HOOD} />
+      {/* Draped plush navy hood resting behind neck/collar */}
+      <mesh position={[0, 0.435, -0.085]} rotation={[0.35, 0, 0]} scale={[1.08, 0.72, 0.85]} castShadow>
+        <sphereGeometry args={[0.112, 14, 12]} />
+        <meshStandardMaterial {...HOODIE_HOOD} />
       </mesh>
-
-      {/* Draped fleece hood resting on upper back */}
-      <mesh position={[0, 0.415, -0.095]} rotation={[0.38, 0, 0]} scale={[1.05, 0.72, 0.85]} castShadow>
-        <sphereGeometry args={[0.115, 14, 12]} />
-        <meshStandardMaterial {...FLEECE_HOOD} />
-      </mesh>
-      <mesh position={[0, 0.34, -0.118]} rotation={[0.25, 0, 0]} scale={[0.92, 0.55, 0.6]} castShadow>
-        <sphereGeometry args={[0.095, 12, 10]} />
-        <meshStandardMaterial {...FLEECE_HOOD} />
-      </mesh>
-
-      {/* Subtle hoodie drawstrings */}
-      <mesh position={[-0.032, 0.36, 0.112]} rotation={[0.08, 0, 0.05]}>
-        <cylinderGeometry args={[0.004, 0.004, 0.13, 6]} />
-        <meshStandardMaterial color="#cfd7e3" roughness={0.9} />
-      </mesh>
-      <mesh position={[0.032, 0.36, 0.112]} rotation={[0.08, 0, -0.05]}>
-        <cylinderGeometry args={[0.004, 0.004, 0.13, 6]} />
-        <meshStandardMaterial color="#cfd7e3" roughness={0.9} />
+      <mesh position={[0, 0.365, -0.11]} rotation={[0.22, 0, 0]} scale={[0.92, 0.54, 0.58]} castShadow>
+        <sphereGeometry args={[0.092, 12, 10]} />
+        <meshStandardMaterial {...HOODIE_HOOD} />
       </mesh>
     </group>
   );
 }
 
-// Articulated long fleece sleeve + ribbed cuff + white gloved hand
-function FleeceArm({ side = -1, pose = 'standing', slim = false }) {
-  const xBase = side * (slim ? 0.175 : 0.2);
+// Articulated long fleece sleeve + ribbed cuff + natural sculpted hand
+function HoodieArm({ side = -1, pose = 'standing', slim = false, skinColor }) {
+  const xBase = side * (slim ? 0.172 : 0.198);
   const isSeated = pose === 'seated';
 
   return (
     <group position={[xBase, 0.39, 0.01]}>
-      {/* Seamless rounded fleece shoulder */}
+      {/* Seamless fleece shoulder */}
       <mesh castShadow>
-        <sphereGeometry args={[slim ? 0.064 : 0.07, 12, 12]} />
-        <meshStandardMaterial {...FLEECE} />
+        <sphereGeometry args={[slim ? 0.062 : 0.068, 12, 12]} />
+        <meshStandardMaterial {...HOODIE} />
       </mesh>
 
-      {/* Upper arm in plush fleece sleeve */}
+      {/* Upper arm */}
       <mesh
-        position={[side * 0.015, -0.11, isSeated ? 0.065 : 0.055]}
+        position={[side * 0.015, -0.105, isSeated ? 0.065 : 0.055]}
         rotation={[isSeated ? -0.52 : -0.44, 0, side * -0.08]}
         castShadow
       >
-        <capsuleGeometry args={[slim ? 0.052 : 0.058, 0.18, 6, 12]} />
-        <meshStandardMaterial {...FLEECE} />
+        <capsuleGeometry args={[slim ? 0.05 : 0.056, 0.175, 6, 12]} />
+        <meshStandardMaterial {...HOODIE} />
       </mesh>
 
-      {/* Elbow fold */}
-      <mesh position={[side * 0.025, isSeated ? -0.175 : -0.21, isSeated ? 0.13 : 0.11]} castShadow>
-        <sphereGeometry args={[slim ? 0.05 : 0.055, 10, 10]} />
-        <meshStandardMaterial {...FLEECE} />
+      {/* Elbow */}
+      <mesh position={[side * 0.024, isSeated ? -0.17 : -0.205, isSeated ? 0.13 : 0.11]} castShadow>
+        <sphereGeometry args={[slim ? 0.048 : 0.054, 10, 10]} />
+        <meshStandardMaterial {...HOODIE} />
       </mesh>
 
-      {/* Forearm in long fleece sleeve */}
+      {/* Forearm */}
       <mesh
         position={[
           side * (isSeated ? -0.015 : -0.01),
-          isSeated ? -0.155 : -0.26,
+          isSeated ? -0.15 : -0.255,
           isSeated ? 0.255 : 0.23,
         ]}
         rotation={[isSeated ? -1.68 : -1.16, 0, side * 0.18]}
         castShadow
       >
-        <capsuleGeometry args={[slim ? 0.044 : 0.048, 0.19, 6, 12]} />
-        <meshStandardMaterial {...FLEECE} />
+        <capsuleGeometry args={[slim ? 0.043 : 0.047, 0.185, 6, 12]} />
+        <meshStandardMaterial {...HOODIE} />
       </mesh>
 
-      {/* Ribbed fleece cuff at wrist */}
+      {/* Ribbed elastic cuff */}
       <mesh
         position={[
           side * (isSeated ? -0.045 : -0.042),
-          isSeated ? -0.148 : -0.305,
+          isSeated ? -0.145 : -0.302,
           isSeated ? 0.36 : 0.335,
         ]}
         rotation={[isSeated ? -1.68 : -1.16, 0, side * 0.18]}
         castShadow
       >
-        <cylinderGeometry args={[0.04, 0.043, 0.045, 12]} />
-        <meshStandardMaterial {...FLEECE_RIB} />
+        <cylinderGeometry args={[0.039, 0.042, 0.045, 12]} />
+        <meshStandardMaterial {...HOODIE_RIB} />
       </mesh>
 
-      {/* Sculpted white gloved hand (palm + fingers + thumb) */}
+      {/* Sculpted hand */}
       <group
         position={[
           side * (isSeated ? -0.06 : -0.056),
-          isSeated ? -0.142 : -0.322,
-          isSeated ? 0.41 : 0.382,
+          isSeated ? -0.14 : -0.32,
+          isSeated ? 0.408 : 0.382,
         ]}
         rotation={[isSeated ? 0.08 : 0.32, side * -0.15, 0]}
       >
-        {/* Palm */}
-        <mesh scale={[1.0, 0.52, 1.25]} castShadow>
-          <sphereGeometry args={[0.036, 10, 10]} />
-          <meshStandardMaterial {...GLOVE} />
+        <mesh scale={[1.0, 0.5, 1.25]} castShadow>
+          <sphereGeometry args={[0.034, 10, 10]} />
+          <meshStandardMaterial color={skinColor} roughness={0.68} />
         </mesh>
-        {/* Tapered fingers */}
-        <mesh position={[0, -0.006, 0.042]} rotation={[0.25, 0, 0]} scale={[0.92, 0.42, 1.0]} castShadow>
-          <sphereGeometry args={[0.032, 10, 8]} />
-          <meshStandardMaterial {...GLOVE} />
+        <mesh position={[0, -0.005, 0.04]} rotation={[0.25, 0, 0]} scale={[0.9, 0.42, 1.0]} castShadow>
+          <sphereGeometry args={[0.03, 10, 8]} />
+          <meshStandardMaterial color={skinColor} roughness={0.68} />
         </mesh>
-        {/* Thumb */}
-        <mesh position={[-side * 0.032, -0.004, 0.015]} rotation={[0.2, side * 0.5, 0]} castShadow>
-          <capsuleGeometry args={[0.01, 0.025, 4, 8]} />
-          <meshStandardMaterial {...GLOVE} />
+        <mesh position={[-side * 0.03, -0.004, 0.014]} rotation={[0.2, side * 0.5, 0]} castShadow>
+          <capsuleGeometry args={[0.009, 0.024, 4, 8]} />
+          <meshStandardMaterial color={skinColor} roughness={0.68} />
         </mesh>
       </group>
     </group>
   );
 }
 
-// Sculpted sneaker / work shoe with sole trim
-function WorkShoe({ position }) {
+// Crisp white low-top sneakers (matching reference sheet)
+function WhiteSneaker({ position }) {
   return (
     <group position={position}>
-      {/* Sole */}
-      <mesh position={[0, 0.014, 0.02]} scale={[0.95, 0.36, 1.95]} castShadow>
+      {/* Light gray sole */}
+      <mesh position={[0, 0.015, 0.022]} scale={[0.95, 0.38, 1.95]} castShadow>
         <sphereGeometry args={[0.058, 12, 8]} />
-        <meshStandardMaterial {...SHOE_SOLE} />
+        <meshStandardMaterial {...SNEAKER_SOLE} />
       </mesh>
-      {/* Upper */}
-      <mesh position={[0, 0.04, 0.015]} scale={[0.9, 0.65, 1.82]} castShadow>
+      {/* Crisp white upper */}
+      <mesh position={[0, 0.042, 0.016]} scale={[0.9, 0.66, 1.84]} castShadow receiveShadow>
         <sphereGeometry args={[0.056, 12, 10]} />
-        <meshStandardMaterial {...SHOE_UPPER} />
+        <meshStandardMaterial {...WHITE_SNEAKER} />
       </mesh>
     </group>
   );
 }
 
-// Standing operator in plush fleece hoodie (facing +Z locally)
+// Standing operator in open zip-up navy hoodie, white tee, charcoal cargo pants & white sneakers
 function StandingOperator({ position, rotationY = 0, skinColor, hairColor, heightScale = 1, turnY = 0 }) {
   return (
     <group position={position} rotation={[0, rotationY, 0]} scale={[1, heightScale, 1]}>
-      <WorkShoe position={[-0.1, 0, 0.02]} />
-      <WorkShoe position={[0.1, 0, 0.02]} />
+      <WhiteSneaker position={[-0.1, 0, 0.02]} />
+      <WhiteSneaker position={[0.1, 0, 0.02]} />
 
-      {/* Natural tapered legs (calves + knees + thighs) */}
-      {[-0.1, 0.1].map((x, idx) => (
-        <group key={idx} position={[x, 0, 0]}>
+      {/* Charcoal cargo trousers with side flap pockets */}
+      {[-1, 1].map((side) => (
+        <group key={`leg-${side}`} position={[side * 0.1, 0, 0]}>
           {/* Calf */}
           <mesh position={[0, 0.25, 0]} castShadow receiveShadow>
-            <capsuleGeometry args={[0.056, 0.32, 6, 12]} />
-            <meshStandardMaterial {...PANTS} />
+            <capsuleGeometry args={[0.058, 0.32, 6, 12]} />
+            <meshStandardMaterial {...CARGO_PANTS} />
           </mesh>
           {/* Thigh */}
-          <mesh position={[0, 0.64, 0.005]} castShadow receiveShadow>
+          <mesh position={[0, 0.63, 0.005]} castShadow receiveShadow>
             <capsuleGeometry args={[0.072, 0.34, 6, 12]} />
-            <meshStandardMaterial {...PANTS} />
+            <meshStandardMaterial {...CARGO_PANTS} />
           </mesh>
+          {/* Outer thigh cargo pocket with top flap */}
+          <RoundedBox
+            args={[0.026, 0.15, 0.115]}
+            radius={0.008}
+            smoothness={2}
+            position={[side * 0.068, 0.56, 0.005]}
+            castShadow
+          >
+            <meshStandardMaterial {...CARGO_POCKET} />
+          </RoundedBox>
+          <RoundedBox
+            args={[0.03, 0.036, 0.12]}
+            radius={0.006}
+            smoothness={2}
+            position={[side * 0.07, 0.625, 0.005]}
+          >
+            <meshStandardMaterial {...CARGO_PANTS} />
+          </RoundedBox>
         </group>
       ))}
 
       {/* Hips */}
       <mesh position={[0, 0.87, 0]} scale={[1.05, 0.62, 0.68]} castShadow>
-        <sphereGeometry args={[0.165, 14, 12]} />
-        <meshStandardMaterial {...PANTS} />
+        <sphereGeometry args={[0.162, 14, 12]} />
+        <meshStandardMaterial {...CARGO_PANTS} />
       </mesh>
 
-      {/* Torso leaning gently over the packing table */}
-      <group position={[0, 0.91, 0]} rotation={[0.11, 0, 0]}>
-        <FleeceHoodieTorso />
-        <FleeceArm side={-1} pose="standing" />
-        <FleeceArm side={1} pose="standing" />
-        <HumanHead y={0.59} skinColor={skinColor} hairColor={hairColor} tiltX={0.26} turnY={turnY} />
+      {/* Torso */}
+      <group position={[0, 0.91, 0]} rotation={[0.1, 0, 0]}>
+        <OpenZipHoodieTorso />
+        <HoodieArm side={-1} pose="standing" skinColor={skinColor} />
+        <HoodieArm side={1} pose="standing" skinColor={skinColor} />
+        <StylizedHead y={0.61} skinColor={skinColor} hairColor={hairColor} tiltX={0.22} turnY={turnY} />
       </group>
     </group>
   );
 }
 
-// Seated woman with curly hair ("mujer con chinos") in plush fleece hoodie at Zebra ZT411
+// Seated curly-haired woman ("mujer con chinos") in matching open zip hoodie, white tee, cargo pants & white sneakers
 function SeatedCurlyWoman({ position, rotationY = 0, skinColor, hairColor }) {
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
-      <WorkShoe position={[-0.095, 0, 0.33]} />
-      <WorkShoe position={[0.095, 0, 0.33]} />
+      <WhiteSneaker position={[-0.095, 0, 0.33]} />
+      <WhiteSneaker position={[0.095, 0, 0.33]} />
 
       {/* Lower legs */}
       {[-0.095, 0.095].map((x, idx) => (
         <mesh key={`calf-${idx}`} position={[x, 0.25, 0.29]} rotation={[0.08, 0, 0]} castShadow>
-          <capsuleGeometry args={[0.05, 0.34, 6, 12]} />
-          <meshStandardMaterial {...PANTS} />
+          <capsuleGeometry args={[0.052, 0.34, 6, 12]} />
+          <meshStandardMaterial {...CARGO_PANTS} />
         </mesh>
       ))}
 
-      {/* Thighs seated naturally on chair cushion */}
-      {[-0.095, 0.095].map((x, idx) => (
-        <mesh key={`thigh-${idx}`} position={[x, 0.505, 0.12]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <capsuleGeometry args={[0.064, 0.29, 6, 12]} />
-          <meshStandardMaterial {...PANTS} />
-        </mesh>
+      {/* Seated thighs with side cargo pockets */}
+      {[-1, 1].map((side) => (
+        <group key={`thigh-${side}`}>
+          <mesh position={[side * 0.095, 0.505, 0.12]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+            <capsuleGeometry args={[0.064, 0.29, 6, 12]} />
+            <meshStandardMaterial {...CARGO_PANTS} />
+          </mesh>
+          <RoundedBox
+            args={[0.022, 0.1, 0.13]}
+            radius={0.008}
+            smoothness={2}
+            position={[side * 0.155, 0.505, 0.14]}
+          >
+            <meshStandardMaterial {...CARGO_POCKET} />
+          </RoundedBox>
+        </group>
       ))}
 
       {/* Seated hips */}
       <mesh position={[0, 0.525, -0.02]} scale={[1.02, 0.58, 0.72]} castShadow>
-        <sphereGeometry args={[0.16, 14, 12]} />
-        <meshStandardMaterial {...PANTS} />
+        <sphereGeometry args={[0.158, 14, 12]} />
+        <meshStandardMaterial {...CARGO_PANTS} />
       </mesh>
 
-      {/* Slimmer sculpted fleece hoodie torso */}
+      {/* Open zip-up navy hoodie + white tee + curly hair */}
       <group position={[0, 0.56, -0.02]} rotation={[0.07, 0, 0]}>
-        <FleeceHoodieTorso slim />
-        <FleeceArm side={-1} pose="seated" slim />
-        <FleeceArm side={1} pose="seated" slim />
-        <HumanHead
-          y={0.585}
+        <OpenZipHoodieTorso slim />
+        <HoodieArm side={-1} pose="seated" slim skinColor={skinColor} />
+        <HoodieArm side={1} pose="seated" slim skinColor={skinColor} />
+        <StylizedHead
+          y={0.605}
           skinColor={skinColor}
           hairColor={hairColor}
           isCurlyWoman
@@ -380,7 +509,7 @@ function SeatedCurlyWoman({ position, rotationY = 0, skinColor, hairColor }) {
 export default function Operators() {
   return (
     <group name="room-operators">
-      {/* 1. Woman with curly hair ("mujer con chinos") seated at Estación Zebra ZT411 */}
+      {/* 1. Woman with curly hair seated at Estación Zebra ZT411 */}
       <SeatedCurlyWoman
         position={[-0.92, 0, 1.2]}
         rotationY={-Math.PI / 2 + 0.08}
@@ -388,7 +517,7 @@ export default function Operators() {
         hairColor={HAIR_TONES[0]}
       />
 
-      {/* 2-4. Three operators in plush fleece hoodies along the 4m Embolsado bench */}
+      {/* 2-4. Three operators along the 4m Embolsado bench */}
       <StandingOperator
         position={[0.96, 0, -1.28]}
         rotationY={Math.PI / 2}
@@ -414,7 +543,7 @@ export default function Operators() {
         turnY={0.05}
       />
 
-      {/* 5. Operator in plush fleece hoodie at Seedless front table */}
+      {/* 5. Operator at Seedless front table */}
       <StandingOperator
         position={[0.45, 0, 1.02]}
         rotationY={0}
