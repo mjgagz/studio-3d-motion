@@ -157,6 +157,104 @@ function useCharacterAssets() {
     const bandCurve = new THREE.CatmullRomCurve3(bandPts, true);
     const hairnetBandGeo = new THREE.TubeGeometry(bandCurve, 72, 0.008, 8, true);
 
+    // 2b. Organic layered hair strands peeking below the hairnet elastic band (#2E1E15)
+    // Tapered fringe / bangs locks emerging across upper forehead (above eyebrows)
+    const makeHairStrandGeo = (pts, radius = 0.011) => {
+      const curve = new THREE.CatmullRomCurve3(pts);
+      const geo = new THREE.TubeGeometry(curve, 12, radius, 8, false);
+      // Taper tip smoothly toward the end of each lock
+      const pos = geo.attributes.position;
+      const radialSegs = 8;
+      const tubularSegs = 12;
+      for (let i = 0; i <= tubularSegs; i++) {
+        const t = i / tubularSegs;
+        const center = curve.getPointAt(t);
+        // Taper at both root (slight) and tip (pointed organic lock)
+        const scale = t < 0.2 ? 0.85 + t * 0.75 : Math.max(0.18, 1 - Math.pow((t - 0.2) / 0.8, 1.5) * 0.82);
+        for (let j = 0; j <= radialSegs; j++) {
+          const idx = i * (radialSegs + 1) + j;
+          const vx = pos.getX(idx);
+          const vy = pos.getY(idx);
+          const vz = pos.getZ(idx);
+          pos.setXYZ(
+            idx,
+            center.x + (vx - center.x) * scale,
+            center.y + (vy - center.y) * scale * 0.65, // flatten slightly like natural hair ribbon
+            center.z + (vz - center.z) * scale
+          );
+        }
+      }
+      geo.computeVertexNormals();
+      return geo;
+    };
+
+    const fringeLocks = [
+      makeHairStrandGeo([
+        new THREE.Vector3(-0.072, 0.072, 0.076),
+        new THREE.Vector3(-0.068, 0.058, 0.088),
+        new THREE.Vector3(-0.056, 0.044, 0.095),
+      ], 0.013),
+      makeHairStrandGeo([
+        new THREE.Vector3(-0.042, 0.075, 0.088),
+        new THREE.Vector3(-0.036, 0.062, 0.098),
+        new THREE.Vector3(-0.022, 0.049, 0.103),
+      ], 0.014),
+      makeHairStrandGeo([
+        new THREE.Vector3(-0.008, 0.076, 0.092),
+        new THREE.Vector3(-0.002, 0.063, 0.102),
+        new THREE.Vector3(0.01, 0.05, 0.105),
+      ], 0.014),
+      makeHairStrandGeo([
+        new THREE.Vector3(0.028, 0.075, 0.09),
+        new THREE.Vector3(0.035, 0.061, 0.099),
+        new THREE.Vector3(0.045, 0.048, 0.101),
+      ], 0.014),
+      makeHairStrandGeo([
+        new THREE.Vector3(0.06, 0.072, 0.082),
+        new THREE.Vector3(0.068, 0.057, 0.09),
+        new THREE.Vector3(0.074, 0.044, 0.09),
+      ], 0.013),
+    ];
+
+    // Elongated sculpted sideburns curving down in front of both ears
+    const makeSideburnGeo = (side) =>
+      makeHairStrandGeo([
+        new THREE.Vector3(side * 0.096, 0.058, 0.034),
+        new THREE.Vector3(side * 0.101, 0.026, 0.028),
+        new THREE.Vector3(side * 0.098, -0.006, 0.02),
+        new THREE.Vector3(side * 0.092, -0.03, 0.012),
+      ], 0.014);
+    const sideburnLeftGeo = makeSideburnGeo(-1);
+    const sideburnRightGeo = makeSideburnGeo(1);
+
+    // Fuller layered nape hair locks curving smoothly along the back of the head & upper neck
+    const napeLocks = [-0.078, -0.052, -0.026, 0.0, 0.026, 0.052, 0.078].map((x, idx) => {
+      const edgeFactor = Math.abs(x) / 0.08;
+      const zBase = -0.096 + edgeFactor * 0.038;
+      const drop = -0.078 + edgeFactor * 0.016 - (idx % 2) * 0.008;
+      return makeHairStrandGeo([
+        new THREE.Vector3(x * 1.05, 0.034, zBase),
+        new THREE.Vector3(x * 1.02, -0.016, zBase - 0.01),
+        new THREE.Vector3(x * 0.94, drop, zBase + 0.004),
+      ], 0.017);
+    });
+
+    // Sculpted organic palm ExtrudeGeometry (narrow at wrist, wider at knuckles, soft bevel)
+    const palmShape = new THREE.Shape();
+    palmShape.moveTo(-0.021, 0.0);       // wrist left
+    palmShape.lineTo(0.021, 0.0);        // wrist right
+    palmShape.bezierCurveTo(0.029, -0.012, 0.03, -0.034, 0.026, -0.048); // outer palm edge
+    palmShape.bezierCurveTo(0.016, -0.055, -0.016, -0.055, -0.026, -0.048); // knuckle ridge
+    palmShape.bezierCurveTo(-0.031, -0.032, -0.029, -0.012, -0.021, 0.0); // thumb side
+    const palmGeo = new THREE.ExtrudeGeometry(palmShape, {
+      depth: 0.011,
+      bevelEnabled: true,
+      bevelThickness: 0.0055,
+      bevelSize: 0.004,
+      bevelSegments: 3,
+    });
+    palmGeo.translate(0, 0, -0.0055);
+
     // Eyebrow arched TubeGeometry (left and right mirrored)
     const browCurve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(-0.021, -0.002, -0.003),
@@ -354,8 +452,8 @@ function useCharacterAssets() {
         sheenRoughness: 0.85,
       }),
       hairBase: new THREE.MeshStandardMaterial({
-        color: '#2B1F18',
-        roughness: 0.92,
+        color: '#2E1E15',
+        roughness: 0.94,
         metalness: 0,
       }),
       eyebrow: new THREE.MeshStandardMaterial({
@@ -458,6 +556,11 @@ function useCharacterAssets() {
       neckGeo,
       hairnetGeo,
       hairnetBandGeo,
+      fringeLocks,
+      sideburnLeftGeo,
+      sideburnRightGeo,
+      napeLocks,
+      palmGeo,
       browGeo,
       earGeo,
       maskGeo,
@@ -549,7 +652,7 @@ function CharacterHead({ assets, y, tiltX = 0.14, turnY = 0, fullerHairBase = fa
         </group>
       ))}
 
-      {/* Dark hair base softly visible underneath the semi-translucent hairnet (tucked cleanly inside band) */}
+      {/* Dark hair base softly visible underneath the semi-translucent hairnet */}
       <mesh
         material={m.hairBase}
         position={[0, 0.056, -0.012]}
@@ -557,6 +660,23 @@ function CharacterHead({ assets, y, tiltX = 0.14, turnY = 0, fullerHairBase = fa
       >
         <sphereGeometry args={[0.098, 16, 14]} />
       </mesh>
+
+      {/* Visible layered hair peeking below the hairnet elastic band (#2E1E15 matte) */}
+      <group name="visible-hair-layers">
+        {/* Soft front fringe / bangs peeking over upper forehead (above eyebrows) */}
+        {assets.fringeLocks.map((geo, idx) => (
+          <mesh key={`fringe-${idx}`} geometry={geo} material={m.hairBase} castShadow />
+        ))}
+        {/* Marked elongated sideburns in front of both ears */}
+        <mesh geometry={assets.sideburnLeftGeo} material={m.hairBase} castShadow />
+        <mesh geometry={assets.sideburnRightGeo} material={m.hairBase} castShadow />
+        {/* Fuller layered nape hair across the back of the head & upper neck */}
+        <group scale={fullerHairBase ? [1.06, 1.15, 1.08] : [1.0, 1.0, 1.0]}>
+          {assets.napeLocks.map((geo, idx) => (
+            <mesh key={`nape-${idx}`} geometry={geo} material={m.hairBase} castShadow />
+          ))}
+        </group>
+      </group>
 
       {/* Closer-fitting bouffant semi-translucent white sanitary hairnet */}
       <mesh
@@ -696,31 +816,54 @@ function OrganicArm({ assets, side = -1, pose = 'standing', slim = false }) {
               castShadow
             />
 
-            {/* Organic stylized hand resting cleanly above bags/keyboard */}
-            <group position={[0, -0.264, 0.01]} rotation={[isSeated ? 0.24 : 0.36, side * -0.14, 0]}>
-              {/* Palm */}
-              <mesh material={m.skin} scale={[0.92, 1.15, 0.55]} castShadow>
-                <sphereGeometry args={[0.032, 12, 10]} />
+            {/* Articulated 5-finger organic stylized hand (palm + thumb + 4 curved fingers) */}
+            <group position={[0, -0.24, 0.004]} rotation={[isSeated ? 0.22 : 0.34, side * -0.14, 0]}>
+              {/* Wrist-to-palm transition */}
+              <mesh material={m.skin} position={[0, 0.002, 0]} scale={[1.0, 0.7, 0.72]}>
+                <sphereGeometry args={[0.022, 10, 8]} />
               </mesh>
-              {/* Gently flexed fingers */}
-              <mesh
-                material={m.skin}
-                position={[0, -0.036, 0.01]}
-                rotation={[0.38, 0, 0]}
-                scale={[0.88, 1.1, 0.45]}
-                castShadow
-              >
-                <sphereGeometry args={[0.028, 10, 8]} />
-              </mesh>
-              {/* Thumb */}
-              <mesh
-                material={m.skin}
-                position={[-side * 0.028, -0.008, 0.012]}
-                rotation={[0.3, 0, side * 0.45]}
-                castShadow
-              >
-                <capsuleGeometry args={[0.0085, 0.022, 6, 8]} />
-              </mesh>
+
+              {/* Sculpted organic palm */}
+              <mesh geometry={assets.palmGeo} material={m.skin} castShadow />
+
+              {/* Separated articulated thumb (inward side = -side) */}
+              <group position={[-side * 0.024, -0.016, 0.006]} rotation={[0.28, side * -0.32, -side * 0.56]}>
+                {/* Proximal thumb */}
+                <mesh material={m.skin} position={[0, -0.012, 0]} castShadow>
+                  <capsuleGeometry args={[0.0072, 0.014, 5, 8]} />
+                </mesh>
+                {/* Distal thumb slightly curled inward */}
+                <group position={[0, -0.023, 0]} rotation={[0.38, 0, side * 0.22]}>
+                  <mesh material={m.skin} position={[0, -0.009, 0]} castShadow>
+                    <capsuleGeometry args={[0.0062, 0.011, 5, 8]} />
+                  </mesh>
+                </group>
+              </group>
+
+              {/* Four differentiated fingers: index, middle, ring, pinky (mirrored by side) */}
+              {[
+                { name: 'index', offset: -0.019, len1: 0.017, len2: 0.013, r: 0.006, curl1: 0.28, curl2: 0.42 },
+                { name: 'middle', offset: -0.006, len1: 0.019, len2: 0.014, r: 0.0062, curl1: 0.32, curl2: 0.46 },
+                { name: 'ring', offset: 0.007, len1: 0.017, len2: 0.013, r: 0.0058, curl1: 0.36, curl2: 0.5 },
+                { name: 'pinky', offset: 0.019, len1: 0.013, len2: 0.01, r: 0.005, curl1: 0.4, curl2: 0.52 },
+              ].map((f) => (
+                <group
+                  key={f.name}
+                  position={[side * f.offset, -0.048, 0.001]}
+                  rotation={[f.curl1, 0, side * f.offset * 1.4]}
+                >
+                  {/* Proximal phalanx */}
+                  <mesh material={m.skin} position={[0, -f.len1 * 0.5, 0]} castShadow>
+                    <capsuleGeometry args={[f.r, f.len1, 5, 8]} />
+                  </mesh>
+                  {/* Distal phalanx gently curled inward */}
+                  <group position={[0, -f.len1 - 0.002, 0]} rotation={[f.curl2, 0, 0]}>
+                    <mesh material={m.skin} position={[0, -f.len2 * 0.5, 0]} castShadow>
+                      <capsuleGeometry args={[f.r * 0.86, f.len2, 5, 8]} />
+                    </mesh>
+                  </group>
+                </group>
+              ))}
             </group>
           </group>
         </group>
