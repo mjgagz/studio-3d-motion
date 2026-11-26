@@ -188,26 +188,77 @@ function createPosedCharacter(scene, pose) {
 function OperatorInstance({ scene, position, rotationY = 0, scale = 1, pose = 'standingWork' }) {
   const cloned = useMemo(() => createPosedCharacter(scene, pose), [scene, pose]);
   const isSeated = pose === 'seatedTyping';
+  // Vertical offset from grounding shift on seated pose (~0.355 m)
+  const yOff = isSeated ? -0.355 : 0;
+  const lean = isSeated ? 0.08 : 0.11;
 
   return (
     <group position={position} rotation={[0, rotationY, 0]} scale={scale}>
       <primitive object={cloned} />
-      {/* Slim inner navy hoodie & charcoal hip core (strictly inside torso, plugs only side arm-seam holes) */}
-      <mesh
-        position={[0, isSeated ? 0.71 : 1.04, isSeated ? 0.012 : 0.018]}
-        rotation={[isSeated ? 0.08 : 0.11, 0, 0]}
-        scale={[0.92, 1.0, 0.46]}
-      >
-        <cylinderGeometry args={[0.122, 0.118, 0.34, 16]} />
-        <meshStandardMaterial color="#233248" roughness={0.94} metalness={0} />
-      </mesh>
-      <mesh
-        position={[0, isSeated ? 0.47 : 0.81, isSeated ? 0.005 : 0.0]}
-        scale={[0.9, 0.65, 0.48]}
-      >
-        <sphereGeometry args={[0.122, 14, 12]} />
-        <meshStandardMaterial color="#3a3b3e" roughness={0.94} metalness={0} />
-      </mesh>
+
+      {/* 1. Clean neck, nape hair rim & matte-navy mock-neck hoodie collar (completely covers mottled GLB neck texture) */}
+      <group position={[0, 1.365 + yOff, isSeated ? 0.022 : 0.036]} rotation={[lean, 0, 0]}>
+        {/* Clean warm matte skin neck wrapping full back/sides of neck up to the hairnet */}
+        <mesh position={[0, 0.036, -0.014]} castShadow>
+          <cylinderGeometry args={[0.072, 0.076, 0.12, 20]} />
+          <meshStandardMaterial color="#dfb396" roughness={0.72} metalness={0} />
+        </mesh>
+        {/* Clean dark-brown nape hair band tucked directly under the rear hairnet rim */}
+        <mesh position={[0, 0.082, -0.028]} rotation={[0.15, 0, 0]} scale={[1.05, 0.72, 0.92]} castShadow>
+          <cylinderGeometry args={[0.088, 0.078, 0.058, 20, 1, false, Math.PI * 0.45, Math.PI * 1.1]} />
+          <meshStandardMaterial color="#3a2618" roughness={0.92} metalness={0} />
+        </mesh>
+        {/* High matte navy fleece mock-neck collar covering lower neck cleanly */}
+        <mesh position={[0, -0.024, -0.012]} castShadow>
+          <cylinderGeometry args={[0.088, 0.102, 0.088, 22]} />
+          <meshStandardMaterial color="#25344b" roughness={0.93} metalness={0} />
+        </mesh>
+        {/* Soft draped navy hood rim tucked behind the collar */}
+        <mesh position={[0, -0.038, -0.062]} rotation={[0.35, 0, 0]} scale={[1.18, 0.68, 0.76]} castShadow>
+          <sphereGeometry args={[0.094, 16, 12]} />
+          <meshStandardMaterial color="#212f44" roughness={0.94} metalness={0} />
+        </mesh>
+      </group>
+
+      {/* 2. Solid inner navy hoodie torso & side-waist gussets (closes all arm-seam cutouts cleanly) */}
+      <group position={[0, 1.04 + yOff, isSeated ? 0.012 : 0.018]} rotation={[lean, 0, 0]}>
+        <mesh scale={[0.96, 1.0, 0.54]} castShadow receiveShadow>
+          <cylinderGeometry args={[0.138, 0.136, 0.42, 18]} />
+          <meshStandardMaterial color="#25344b" roughness={0.93} metalness={0} />
+        </mesh>
+        {/* Left & right side-waist fleece gussets under the arms */}
+        {[-1, 1].map((side) => (
+          <mesh key={`gusset-${side}`} position={[side * 0.118, -0.04, -0.01]} scale={[0.52, 1.0, 0.68]}>
+            <cylinderGeometry args={[0.075, 0.078, 0.34, 14]} />
+            <meshStandardMaterial color="#25344b" roughness={0.93} metalness={0} />
+          </mesh>
+        ))}
+      </group>
+
+      {/* 3. Solid charcoal hip & upper-thigh body completion (eliminates white specks on hip/thigh seams) */}
+      <group position={[0, isSeated ? 0.48 : 0.81, isSeated ? 0.005 : 0.0]}>
+        <mesh scale={[1.02, 0.74, 0.62]} castShadow receiveShadow>
+          <sphereGeometry args={[0.138, 16, 12]} />
+          <meshStandardMaterial color="#3b3c40" roughness={0.94} metalness={0} />
+        </mesh>
+        {/* Upper thigh liners matching standing vs seated pose */}
+        {[-1, 1].map((side) => (
+          <mesh
+            key={`thigh-fill-${side}`}
+            position={
+              isSeated
+                ? [side * 0.086, 0.0, 0.14]
+                : [side * 0.086, -0.14, 0.0]
+            }
+            rotation={isSeated ? [Math.PI / 2, 0, 0] : [0, 0, 0]}
+            castShadow
+            receiveShadow
+          >
+            <cylinderGeometry args={[0.068, 0.062, 0.28, 14]} />
+            <meshStandardMaterial color="#3b3c40" roughness={0.94} metalness={0} />
+          </mesh>
+        ))}
+      </group>
     </group>
   );
 }
