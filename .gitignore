@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.netlify/
+studio-3d-motion-web.zip
+.DS_Store
+*.local
