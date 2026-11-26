@@ -38,30 +38,30 @@ const smooth = (e0, e1, x) => {
 // Lower edge of the visible hair per angle (0 = front, +-PI = back)
 function hairLowY(a) {
   const d = (Math.abs(a) * 180) / Math.PI;
-  const front = 0.064; // short fringe above the eyebrows
-  const sideburn = 0.0; // clean sideburn, clear of the mask edge
-  const aboveEar = 0.03; // leaves the ear visible
-  const nape = -0.098; // full nape
+  const front = 0.056; // fuller fringe right above the eyebrows
+  const sideburn = -0.008; // clean sideburn, clear of the mask edge
+  const aboveEar = 0.018; // hugs closely over the top of the ear
+  const nape = -0.102; // full nape covering behind the ears completely
   let y = front;
-  y += (sideburn - front) * smooth(44, 66, d);
-  y += (aboveEar - sideburn) * smooth(76, 84, d);
-  y += (nape - aboveEar) * smooth(108, 140, d);
+  y += (sideburn - front) * smooth(40, 60, d);
+  y += (aboveEar - sideburn) * smooth(74, 84, d);
+  y += (nape - aboveEar) * smooth(96, 118, d);
   return y;
 }
-// One continuous smooth hair skirt hugging the skull, tucked under the hairnet band
+// One continuous smooth hair skirt hugging the skull, tucked generously under the hairnet band
 function createHairGeometry() {
   const cols = 120;
-  const rows = 10;
+  const rows = 12;
   const positions = [];
   const indices = [];
   for (let iy = 0; iy <= rows; iy++) {
     const v = iy / rows;
     for (let ix = 0; ix <= cols; ix++) {
       const a = -Math.PI + (ix / cols) * Math.PI * 2;
-      const top = bandBaseY(a) + 0.01;
+      const top = bandBaseY(a) + 0.024;
       const low = hairLowY(a);
       const yy = low + (top - low) * v;
-      const thick = (0.002 + 0.0105 * smooth(0, 0.5, v)) * (1 - 0.3 * smooth(0.8, 1, v));
+      const thick = (0.0025 + 0.011 * smooth(0, 0.42, v)) * (1 - 0.72 * smooth(0.68, 1, v));
       const r = headRadiusAt(yy) + thick;
       positions.push(
         Math.sin(a) * r * HEAD_SCALE[0],
