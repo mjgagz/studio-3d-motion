@@ -1,6 +1,7 @@
 import { ContactShadows, Environment, Lightformer } from '@react-three/drei';
 import RoomArchitecture from './RoomArchitecture';
 import Furniture from './Furniture';
+import Operators from './Operators';
 import ZoneOverlay from './ZoneOverlay';
 import DroneCamera from './DroneCamera';
 
@@ -68,9 +69,10 @@ export default function StudioScene({
         />
       </Environment>
 
-      {/* Open 3D industrial floor & equipment (walls removed) */}
+      {/* Open 3D industrial floor, equipment & 5 uniformed operators */}
       <RoomArchitecture />
       <Furniture />
+      <Operators />
       <ZoneOverlay visible={showLabels} />
 
       {/* Baked once (frames={1}) for zero per-frame GPU overhead */}
