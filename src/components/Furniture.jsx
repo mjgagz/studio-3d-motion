@@ -368,15 +368,15 @@ function StainlessTable({ width, depth, height = 0.86 }) {
   );
 }
 
-// 3. EMBOLSADO: Long 3-station stainless packing bench along right wall
+// 3. EMBOLSADO: Full 4.0 m x 0.8 m stainless packing bench along right edge
 function EmbolsadoZone() {
-  const stationZs = [-0.76, 0.0, 0.76];
+  const stationZs = [-1.32, -0.44, 0.44, 1.32];
 
   return (
-    <group name="zone-embolsado" position={[1.58, 0, -0.58]}>
-      <StainlessTable width={0.74} depth={2.36} height={0.86} />
+    <group name="zone-embolsado" position={[1.6, 0, 0]}>
+      <StainlessTable width={0.78} depth={4.0} height={0.86} />
 
-      {/* 3 packing stations with zip bags, label rolls & printed sheets */}
+      {/* 4 packing stations evenly distributed along the 4.0 m bench */}
       {stationZs.map((z, idx) => (
         <group key={idx} position={[0, 0.885, z]}>
           <PolyBag position={[-0.12, 0, -0.08]} rotation={[0, 0.08, 0]} />
@@ -394,18 +394,18 @@ function EmbolsadoZone() {
   );
 }
 
-// 4. SEEDLESS: Front-right stainless packing table with filled & flat bags
+// 4. SEEDLESS: 1.5 m wide stainless packing table along front edge (X: -0.3 to +1.2)
 function SeedlessZone() {
   return (
-    <group name="zone-seedless" position={[1.16, 0, 1.48]}>
-      <StainlessTable width={1.42} depth={0.64} height={0.84} />
+    <group name="zone-seedless" position={[0.45, 0, 1.56]}>
+      <StainlessTable width={1.46} depth={0.64} height={0.84} />
 
-      {/* Packed puffy bags + flat zip bags + label sheet stack (matching 01, 02, 03) */}
+      {/* Packed puffy bags + flat zip bags + label sheet stack */}
       <group position={[0, 0.865, 0]}>
-        <PolyBag position={[-0.44, 0.05, -0.04]} rotation={[0, 0.3, 0]} puffy />
+        <PolyBag position={[-0.46, 0.05, -0.04]} rotation={[0, 0.3, 0]} puffy />
         <PolyBag position={[-0.22, 0.045, 0.12]} rotation={[0, -0.2, 0]} scale={0.88} puffy />
         <PolyBag position={[0.02, 0.005, -0.06]} rotation={[0, 0.05, 0]} />
-        <PolyBag position={[0.34, 0.05, 0.04]} rotation={[0, -0.35, 0]} puffy />
+        <PolyBag position={[0.36, 0.05, 0.04]} rotation={[0, -0.35, 0]} puffy />
 
         {/* Green-striped label sheet stack */}
         <mesh position={[0.06, 0.008, 0.15]} receiveShadow>
@@ -418,7 +418,7 @@ function SeedlessZone() {
         </mesh>
 
         {/* White tray/stack on far right */}
-        <mesh position={[0.54, 0.018, -0.06]} castShadow receiveShadow>
+        <mesh position={[0.56, 0.018, -0.06]} castShadow receiveShadow>
           <boxGeometry args={[0.18, 0.036, 0.24]} />
           <meshStandardMaterial color="#f1f5f9" roughness={0.55} />
         </mesh>

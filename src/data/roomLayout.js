@@ -41,8 +41,8 @@ export const CAMERA_PRESETS = [
     id: 'seedless',
     code: '05',
     label: 'Seedless',
-    position: [-0.25, 1.52, 0.65],
-    target: [1.14, 0.86, 1.48],
+    position: [-0.45, 1.52, 0.55],
+    target: [0.45, 0.86, 1.56],
   },
   {
     id: 'cenital',
@@ -74,7 +74,7 @@ export const DRONE_TARGET_POINTS = [
   new THREE.Vector3(-1.66, 1.12, -1.05),// Focus upper Estante & boxes
   new THREE.Vector3(1.56, 0.92, -1.1),  // Focus Embolsado rear
   new THREE.Vector3(1.56, 0.9, -0.1),   // Focus Embolsado front
-  new THREE.Vector3(1.14, 0.85, 1.48),  // Focus Seedless table
+  new THREE.Vector3(0.45, 0.85, 1.56),  // Focus Seedless table
   new THREE.Vector3(0.0, 0.25, 0.1),    // Center transition
   new THREE.Vector3(0.0, 0.0, 0.12),    // Dead-center top-down plan
   new THREE.Vector3(0.0, 0.65, -0.2),   // Re-frame entrance perspective
