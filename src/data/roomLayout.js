@@ -20,8 +20,8 @@ export const CAMERA_PRESETS = [
     id: 'zebra',
     code: '02',
     label: 'Zebra ZT411',
-    position: [-0.28, 1.48, 2.35],
-    target: [-1.52, 0.86, 1.32],
+    position: [-0.02, 1.68, 2.58],
+    target: [-1.42, 1.05, 1.24],
   },
   {
     id: 'estante',

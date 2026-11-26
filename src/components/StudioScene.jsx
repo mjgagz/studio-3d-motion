@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { ContactShadows, Environment, Lightformer } from '@react-three/drei';
 import RoomArchitecture from './RoomArchitecture';
 import Furniture from './Furniture';
@@ -69,10 +70,12 @@ export default function StudioScene({
         />
       </Environment>
 
-      {/* Open 3D industrial floor, equipment & 5 uniformed operators */}
+      {/* Open 3D industrial floor, equipment & 5 GLB operators */}
       <RoomArchitecture />
       <Furniture />
-      <Operators />
+      <Suspense fallback={null}>
+        <Operators />
+      </Suspense>
       <ZoneOverlay visible={showLabels} />
 
       {/* Baked once (frames={1}) for zero per-frame GPU overhead */}
