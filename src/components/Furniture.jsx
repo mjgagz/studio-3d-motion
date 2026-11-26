@@ -317,8 +317,8 @@ function ZebraStationZone() {
       <LabelRoll position={[0.14, 0.91, 0.18]} radius={0.055} height={0.08} stripeColor="#5ea89b" />
       <LabelRoll position={[-0.12, 0.82, -0.48]} radius={0.052} height={0.08} />
 
-      {/* Ergonomic office chair tucked cleanly beside the rear end of the Zebra desk */}
-      <ErgonomicChair position={[0.78, 0, -0.58]} rotation={[0, -Math.PI / 2 - 0.55, 0]} />
+      {/* Ergonomic office chair positioned directly at the Zebra workstation for the seated operator */}
+      <ErgonomicChair position={[0.64, 0, -0.12]} rotation={[0, -Math.PI / 2 + 0.08, 0]} />
     </group>
   );
 }
