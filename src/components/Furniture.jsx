@@ -13,17 +13,16 @@ const STEEL_DARK = {
   metalness: 0.68,
 };
 
-// Reusable poly bag with teal zip strip (matching 01, 02, 03)
+// Reusable poly bag with teal zip strip (lightweight standard material for locked 60fps)
 function PolyBag({ position, rotation = [0, 0, 0], scale = 1, puffy = false }) {
   return (
     <group position={position} rotation={rotation} scale={scale}>
       {puffy ? (
-        <RoundedBox args={[0.24, 0.11, 0.22]} radius={0.04} smoothness={3} castShadow>
-          <meshPhysicalMaterial
+        <RoundedBox args={[0.24, 0.11, 0.22]} radius={0.04} smoothness={2} castShadow>
+          <meshStandardMaterial
             color="#f5f8fc"
             roughness={0.22}
-            metalness={0.02}
-            transmission={0.35}
+            metalness={0.06}
             transparent
             opacity={0.78}
           />
@@ -32,12 +31,12 @@ function PolyBag({ position, rotation = [0, 0, 0], scale = 1, puffy = false }) {
         <>
           <mesh castShadow receiveShadow>
             <boxGeometry args={[0.22, 0.012, 0.26]} />
-            <meshPhysicalMaterial
+            <meshStandardMaterial
               color="#eef3f8"
-              roughness={0.2}
-              metalness={0.02}
+              roughness={0.24}
+              metalness={0.04}
               transparent
-              opacity={0.72}
+              opacity={0.74}
             />
           </mesh>
           {/* Teal zip seal strip */}
@@ -91,7 +90,7 @@ function CardboardBox({ position, size = [0.36, 0.28, 0.42], open = false }) {
       ) : (
         <mesh position={[0, size[1] / 2 + 0.004, 0]}>
           <boxGeometry args={[size[0] - 0.05, 0.02, size[2] - 0.05]} />
-          <meshPhysicalMaterial color="#eef3f8" roughness={0.25} transparent opacity={0.8} />
+          <meshStandardMaterial color="#eef3f8" roughness={0.25} transparent opacity={0.82} />
         </mesh>
       )}
     </group>

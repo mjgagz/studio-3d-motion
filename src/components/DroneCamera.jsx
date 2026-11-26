@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { CameraControls } from '@react-three/drei';
-import { easing } from 'maath';
 import {
   CAMERA_PRESETS,
   DRONE_POSITION_POINTS,
@@ -110,9 +109,10 @@ export default function DroneCamera({
     dirVec.subVectors(rawPos, rawTarget).multiplyScalar(aspectScale);
     adjustedPos.copy(rawTarget).add(dirVec);
 
-    // Smooth cinematic damping into the spline
-    easing.damp3(currentPos, adjustedPos, 0.32, dt);
-    easing.damp3(currentTarget, rawTarget, 0.32, dt);
+    // Frame-rate independent smooth damping into the spline
+    const alpha = 1 - Math.exp(-6.0 * dt);
+    currentPos.lerp(adjustedPos, alpha);
+    currentTarget.lerp(rawTarget, alpha);
 
     isProgrammaticRef.current = true;
     controls.setLookAt(

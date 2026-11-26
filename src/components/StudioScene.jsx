@@ -1,41 +1,8 @@
-import { useCallback, useMemo, useRef } from 'react';
-import * as THREE from 'three';
-import { useFrame } from '@react-three/fiber';
 import { ContactShadows, Environment, Lightformer } from '@react-three/drei';
-import { DepthOfField, EffectComposer } from '@react-three/postprocessing';
-import { easing } from 'maath';
 import RoomArchitecture from './RoomArchitecture';
 import Furniture from './Furniture';
 import ZoneOverlay from './ZoneOverlay';
 import DroneCamera from './DroneCamera';
-
-function StudioPostProcessing({ focusTargetRef }) {
-  const dofRef = useRef();
-  const smoothTarget = useMemo(() => new THREE.Vector3(0, 0.72, -0.35), []);
-
-  useFrame((_, delta) => {
-    const dt = Math.min(delta, 0.1);
-    if (focusTargetRef.current) {
-      easing.damp3(smoothTarget, focusTargetRef.current, 0.35, dt);
-    }
-    if (dofRef.current) {
-      dofRef.current.target = smoothTarget;
-    }
-  });
-
-  return (
-    <EffectComposer multisampling={4}>
-      <DepthOfField
-        ref={dofRef}
-        target={[0, 0.72, -0.35]}
-        worldFocusRange={7.5}
-        focalLength={0.028}
-        bokehScale={0.85}
-        height={480}
-      />
-    </EffectComposer>
-  );
-}
 
 export default function StudioScene({
   isFlying,
@@ -45,45 +12,39 @@ export default function StudioScene({
   onUserInteract,
   onPhaseChange,
 }) {
-  const focusTargetRef = useRef(new THREE.Vector3(0, 0.72, -0.35));
-
-  const handleTargetUpdate = useCallback((vec) => {
-    focusTargetRef.current.copy(vec);
-  }, []);
-
   return (
     <>
       {/* Clean neutral studio cyclorama */}
       <color attach="background" args={['#e8ebf0']} />
-      <fog attach="fog" args={['#e8ebf0', 14, 30]} />
+      <fog attach="fog" args={['#e8ebf0', 16, 34]} />
 
       {/* Clean architectural studio lighting (zero neon) */}
-      <ambientLight intensity={0.55} color="#ffffff" />
+      <ambientLight intensity={0.6} color="#ffffff" />
       <directionalLight
-        position={[4.2, 8.5, 5.2]}
+        position={[4.5, 8.5, 5.2]}
         intensity={0.95}
         color="#ffffff"
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[1024, 1024]}
         shadow-camera-near={1}
         shadow-camera-far={22}
-        shadow-camera-left={-4.5}
-        shadow-camera-right={4.5}
-        shadow-camera-top={4.5}
-        shadow-camera-bottom={-4.5}
+        shadow-camera-left={-4.2}
+        shadow-camera-right={4.2}
+        shadow-camera-top={4.2}
+        shadow-camera-bottom={-4.2}
         shadow-bias={-0.0004}
       />
       <directionalLight
         position={[-4.5, 5.5, -3.5]}
-        intensity={0.38}
+        intensity={0.4}
         color="#f1f5fb"
       />
 
-      {/* Procedural neutral overhead studio softboxes */}
-      <Environment resolution={256} frames={1}>
+      {/* Procedural neutral overhead studio softboxes (baked once) */}
+      <Environment resolution={128} frames={1}>
         <Lightformer
           form="rect"
-          intensity={1.5}
+          intensity={1.45}
           position={[0, 8, 0]}
           rotation={[Math.PI / 2, 0, 0]}
           scale={[10, 10, 1]}
@@ -107,18 +68,19 @@ export default function StudioScene({
         />
       </Environment>
 
-      {/* Full 3D industrial room & equipment modeled from references 01-05 */}
+      {/* Open 3D industrial floor & equipment (walls removed) */}
       <RoomArchitecture />
       <Furniture />
       <ZoneOverlay visible={showLabels} />
 
-      {/* Soft grounded studio contact shadows */}
+      {/* Baked once (frames={1}) for zero per-frame GPU overhead */}
       <ContactShadows
-        position={[0, 0.004, 0]}
-        opacity={0.34}
+        position={[0, 0.003, 0]}
+        frames={1}
+        opacity={0.32}
         scale={9}
-        blur={2.1}
-        far={2.8}
+        blur={2.0}
+        far={2.6}
         resolution={512}
         color="#1e293b"
       />
@@ -130,11 +92,7 @@ export default function StudioScene({
         aspectMode={aspectMode}
         onUserInteract={onUserInteract}
         onPhaseChange={onPhaseChange}
-        onTargetUpdate={handleTargetUpdate}
       />
-
-      {/* Subtle studio optical DepthOfField */}
-      <StudioPostProcessing focusTargetRef={focusTargetRef} />
     </>
   );
 }
