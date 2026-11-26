@@ -2,6 +2,90 @@ import { useMemo } from 'react';
 import * as THREE from 'three';
 import { RoundedBox } from '@react-three/drei';
 
+// ---- Shared head/hair/hairnet helpers (head-space metres) ----
+const HEAD_SCALE = [0.98, 1.02, 1.04];
+const HEAD_R_TABLE = [
+  [-0.118, 0.0],
+  [-0.112, 0.036],
+  [-0.09, 0.068],
+  [-0.05, 0.092],
+  [-0.005, 0.104],
+  [0.038, 0.106],
+  [0.082, 0.096],
+  [0.112, 0.068],
+  [0.124, 0.032],
+];
+// Skull radius at height yy (head space, after the 1.02 vertical head scale)
+function headRadiusAt(yy) {
+  const y = yy / HEAD_SCALE[1];
+  const t = HEAD_R_TABLE;
+  if (y <= t[0][0]) return t[0][1];
+  for (let i = 0; i < t.length - 1; i++) {
+    const [y0, r0] = t[i];
+    const [y1, r1] = t[i + 1];
+    if (y <= y1) return r0 + ((y - y0) / (y1 - y0)) * (r1 - r0);
+  }
+  return t[t.length - 1][1];
+}
+// Height of the elastic hairnet band around the head: high on forehead, above ears, low at nape
+function bandBaseY(a) {
+  return 0.094 - (1 - Math.cos(a)) * 0.052 + Math.abs(Math.sin(a)) * 0.012;
+}
+const smooth = (e0, e1, x) => {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+};
+// Lower edge of the visible hair per angle (0 = front, +-PI = back)
+function hairLowY(a) {
+  const d = (Math.abs(a) * 180) / Math.PI;
+  const front = 0.064; // short fringe above the eyebrows
+  const sideburn = 0.012; // clean sideburn, clear of the mask edge
+  const aboveEar = 0.04; // leaves the ear visible
+  const nape = -0.072; // full nape
+  let y = front;
+  y += (sideburn - front) * smooth(48, 70, d);
+  y += (aboveEar - sideburn) * smooth(76, 84, d);
+  y += (nape - aboveEar) * smooth(108, 140, d);
+  return y;
+}
+// One continuous smooth hair skirt hugging the skull, tucked under the hairnet band
+function createHairGeometry() {
+  const cols = 120;
+  const rows = 10;
+  const positions = [];
+  const indices = [];
+  for (let iy = 0; iy <= rows; iy++) {
+    const v = iy / rows;
+    for (let ix = 0; ix <= cols; ix++) {
+      const a = -Math.PI + (ix / cols) * Math.PI * 2;
+      const top = bandBaseY(a) + 0.01;
+      const low = hairLowY(a);
+      const yy = low + (top - low) * v;
+      const thick = 0.0015 + 0.0062 * smooth(0, 0.45, v);
+      const r = headRadiusAt(yy) + thick;
+      positions.push(
+        Math.sin(a) * r * HEAD_SCALE[0],
+        yy,
+        Math.cos(a) * r * HEAD_SCALE[2]
+      );
+    }
+  }
+  for (let iy = 0; iy < rows; iy++) {
+    for (let ix = 0; ix < cols; ix++) {
+      const aa = iy * (cols + 1) + ix;
+      const bb = aa + 1;
+      const cc = aa + (cols + 1);
+      const dd = cc + 1;
+      indices.push(aa, bb, cc, bb, dd, cc);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 // Create procedural radial pleat texture for the translucent sanitary hairnet
 function createHairnetPleatTexture() {
   if (typeof document === 'undefined') return null;
@@ -162,78 +246,41 @@ function useCharacterAssets() {
       const vz = hnPos.getZ(i);
       const angle = Math.atan2(vx, vz);
       const puff = 1 + Math.sin(angle * 18) * 0.01 * Math.min(1, Math.max(0, (vy + 0.01) / 0.11));
-      hnPos.setXYZ(i, vx * puff, vy, vz * puff);
+      const ang = Math.atan2(vx, vz);
+      const limit = bandBaseY(ang) + 0.002 - 0.014; // net mesh sits 0.014 above head origin
+      let ny = vy;
+      let k = puff;
+      if (vy < limit) {
+        ny = limit;
+        const rr = Math.hypot(vx, vz) || 1;
+        const need = headRadiusAt(limit + 0.014) + 0.013;
+        k = Math.max(puff, need / rr);
+      }
+      hnPos.setXYZ(i, vx * k, ny, vz * k);
     }
     hairnetGeo.computeVertexNormals();
 
-    // Ruffled elastic hairnet band (wavy closed TubeGeometry around upper forehead, above ears, nape)
+    // Ruffled elastic hairnet band hugging the head: upper forehead, above ears, nape
     const bandPts = [];
     const bandSamples = 64;
     for (let i = 0; i < bandSamples; i++) {
       const a = (i / bandSamples) * Math.PI * 2;
       const ruffle = Math.sin(a * 28) * 0.0028;
-      const rX = 0.106 + ruffle;
-      const rZ = 0.108 + ruffle;
-      // Sit neatly on upper forehead above eyebrows, clear ears, hug nape cleanly
-      const y = 0.068 - (1 - Math.cos(a)) * 0.052 + Math.abs(Math.sin(a)) * 0.012 + Math.sin(a * 28) * 0.0018;
-      bandPts.push(new THREE.Vector3(Math.sin(a) * rX, y, Math.cos(a) * rZ - 0.008));
+      const y = bandBaseY(a) + Math.sin(a * 28) * 0.0018;
+      const r = headRadiusAt(y + 0.002) + 0.011;
+      bandPts.push(
+        new THREE.Vector3(
+          Math.sin(a) * (r * HEAD_SCALE[0] + ruffle),
+          y,
+          Math.cos(a) * (r * HEAD_SCALE[2] + ruffle)
+        )
+      );
     }
     const bandCurve = new THREE.CatmullRomCurve3(bandPts, true);
     const hairnetBandGeo = new THREE.TubeGeometry(bandCurve, 72, 0.008, 8, true);
 
-    // 2b. Smooth continuous hair shells hugging the skull contour (#3A2618)
-    // Head surface radius sampled from headPts (scaled by the head mesh scale in JSX)
-    const headRadiusAt = (yy) => {
-      const table = [
-        [-0.005, 0.104],
-        [0.038, 0.106],
-        [0.062, 0.1],
-        [0.082, 0.096],
-      ];
-      if (yy <= table[0][0]) return table[0][1];
-      for (let i = 0; i < table.length - 1; i++) {
-        const [y0, r0] = table[i];
-        const [y1, r1] = table[i + 1];
-        if (yy <= y1) return r0 + ((yy - y0) / (y1 - y0)) * (r1 - r0);
-      }
-      return table[table.length - 1][1];
-    };
-    const hairShellPts = (yBottom, yTop, steps, lift) => {
-      const pts = [];
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const yy = yBottom + (yTop - yBottom) * t;
-        // Lower edge hugs the skin (almost flush), thickening smoothly toward the top
-        const thickness = 0.0006 + lift * Math.pow(t, 0.7);
-        pts.push(new THREE.Vector2(headRadiusAt(yy) + thickness, yy));
-      }
-      return pts;
-    };
-
-    // Short even fringe: continuous front arc peeking under the hairnet band, above eyebrows
-    const fringeGeo = new THREE.LatheGeometry(
-      hairShellPts(0.057, 0.078, 6, 0.0045),
-      40,
-      -1.02,
-      2.04
-    );
-    fringeGeo.computeVertexNormals();
-
-    // Short clean sideburns at both temples (end above the mask edge)
-    const sideburnRightGeo = new THREE.LatheGeometry(
-      hairShellPts(0.008, 0.07, 10, 0.0042),
-      16,
-      1.08,
-      0.36
-    );
-    sideburnRightGeo.computeVertexNormals();
-    const sideburnLeftGeo = new THREE.LatheGeometry(
-      hairShellPts(0.008, 0.07, 10, 0.0042),
-      16,
-      -1.44,
-      0.36
-    );
-    sideburnLeftGeo.computeVertexNormals();
+    // 2b. Continuous smooth hair skirt (#3A2618) - fringe, sideburns, nape
+    const hairGeo = createHairGeometry();
 
     // Sculpted organic palm ExtrudeGeometry (narrow at wrist, wider at knuckles, soft bevel)
     const palmShape = new THREE.Shape();
@@ -453,7 +500,8 @@ function useCharacterAssets() {
         roughness: 0.9,
         metalness: 0,
         bumpMap: hairBumpTex,
-        bumpScale: 0.0012,
+        bumpScale: 0.0016,
+        side: THREE.DoubleSide,
       }),
       eyebrow: new THREE.MeshStandardMaterial({
         color: '#3A2618',
@@ -555,9 +603,7 @@ function useCharacterAssets() {
       neckGeo,
       hairnetGeo,
       hairnetBandGeo,
-      fringeGeo,
-      sideburnLeftGeo,
-      sideburnRightGeo,
+      hairGeo,
       palmGeo,
       browGeo,
       earGeo,
@@ -659,12 +705,13 @@ function CharacterHead({ assets, y, tiltX = 0.14, turnY = 0, fullerHairBase = fa
         <sphereGeometry args={[0.098, 16, 14]} />
       </mesh>
 
-      {/* Smooth continuous hair (#3A2618 matte): short even fringe + short clean sideburns */}
-      <group name="visible-hair" scale={[0.98, 1.02, 1.04]}>
-        <mesh geometry={assets.fringeGeo} material={m.hairBase} castShadow />
-        <mesh geometry={assets.sideburnLeftGeo} material={m.hairBase} castShadow />
-        <mesh geometry={assets.sideburnRightGeo} material={m.hairBase} castShadow />
-      </group>
+      {/* Continuous matte dark-brown hair (#3A2618): fringe, sideburns and nape, tucked under the hairnet band */}
+      <mesh
+        geometry={assets.hairGeo}
+        material={m.hairBase}
+        scale={fullerHairBase ? [1.03, 1.02, 1.03] : [1, 1, 1]}
+        castShadow
+      />
 
       {/* Closer-fitting bouffant semi-translucent white sanitary hairnet */}
       <mesh
