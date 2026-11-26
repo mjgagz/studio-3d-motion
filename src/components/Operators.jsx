@@ -1,263 +1,582 @@
 import { useMemo } from 'react';
-import { useGLTF } from '@react-three/drei';
+import * as THREE from 'three';
+import { RoundedBox, useGLTF } from '@react-three/drei';
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/personaje-3d.glb`;
 
-function smoothstep(edge0, edge1, x) {
-  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
-}
+// Extract ONLY the clean head/face/mask/hairnet from personaje-3d.glb
+// (cleanly trims off the mottled neck below y=1.445 in back and y=1.40 in front)
+function extractCleanGlbHead(scene) {
+  const headGroup = new THREE.Group();
 
-// Rotate (y, z) around pivot (py, pz) by angle rad (negative swings downward limb forward toward +Z)
-function rotYZ(y, z, py, pz, angle) {
-  const dy = y - py;
-  const dz = z - pz;
-  const c = Math.cos(angle);
-  const s = Math.sin(angle);
-  return [py + dy * c - dz * s, pz + dy * s + dz * c];
-}
-
-// Exact X boundary between torso/thighs and hanging arms/hands along Y
-function armSplitX(y) {
-  if (y > 1.15) return 0.162;
-  if (y > 0.9) return 0.176;
-  if (y > 0.78) return 0.152;
-  return 0.132; // captures inner thumb/fingers cleanly below y=0.78
-}
-
-// Remove any fused bridge triangles between hand and thigh that stretched >3x during arm posing
-function cleanStretchedBridgeTriangles(geo, origPositions) {
-  const pos = geo.attributes.position;
-  const distSq = (arr, a, b) => {
-    const dx = arr[a * 3] - arr[b * 3];
-    const dy = arr[a * 3 + 1] - arr[b * 3 + 1];
-    const dz = arr[a * 3 + 2] - arr[b * 3 + 2];
-    return dx * dx + dy * dy + dz * dz;
-  };
-  const curDistSq = (a, b) => {
-    const dx = pos.getX(a) - pos.getX(b);
-    const dy = pos.getY(a) - pos.getY(b);
-    const dz = pos.getZ(a) - pos.getZ(b);
-    return dx * dx + dy * dy + dz * dz;
-  };
-
-  const maxStretchSq = 18.0; // ~4.2x linear stretch: keeps forearm sleeves 100% intact, removes only fused bridge ribbons
-  const idxAttr = geo.index;
-  if (idxAttr) {
-    const newIndices = [];
-    for (let i = 0; i < idxAttr.count; i += 3) {
-      const a = idxAttr.getX(i);
-      const b = idxAttr.getX(i + 1);
-      const c = idxAttr.getX(i + 2);
-      const oAB = Math.max(distSq(origPositions, a, b), 1e-6);
-      const oBC = Math.max(distSq(origPositions, b, c), 1e-6);
-      const oCA = Math.max(distSq(origPositions, c, a), 1e-6);
-      if (
-        curDistSq(a, b) / oAB < maxStretchSq &&
-        curDistSq(b, c) / oBC < maxStretchSq &&
-        curDistSq(c, a) / oCA < maxStretchSq
-      ) {
-        newIndices.push(a, b, c);
-      }
-    }
-    geo.setIndex(newIndices);
-  }
-}
-
-// Pose a copy of personaje-3d.glb into either:
-// - 'standingWork': slight forward lean, arms & hands reaching onto the bags on the table
-// - 'seatedTyping': seated on chair at 90° hips/knees, arms & hands reaching onto the Zebra keyboard
-function createPosedCharacter(scene, pose) {
-  const copy = scene.clone(true);
-  const isSeated = pose === 'seatedTyping';
-
-  const hipY = 0.82;
-  const hipZ = -0.01;
-  const kneeY = 0.44;
-  const kneeZ = 0.0;
-  const hipAngle = isSeated ? -1.46 : 0;
-  const kneeAngle = isSeated ? 1.5 : 0;
-  const torsoLean = isSeated ? 0.08 : 0.11; // leans upper body gently FORWARD (+Z) toward monitor/bags
-  const [bentKneeY, bentKneeZ] = rotYZ(kneeY, kneeZ, hipY, hipZ, hipAngle);
-
-  const shoulderY = 1.25;
-  const shoulderZ = -0.01;
-  const elbowY = 1.0;
-  const shoulderAngle = isSeated ? -0.88 : -0.58;
-  const elbowAngle = isSeated ? -0.78 : -0.54;
-  const [bentElbowY, bentElbowZ] = rotYZ(elbowY, shoulderZ, shoulderY, shoulderZ, shoulderAngle);
-
-  copy.traverse((obj) => {
+  scene.traverse((obj) => {
     if (!obj.isMesh || !obj.geometry) return;
-    const geo = obj.geometry.clone();
-    const pos = geo.attributes.position;
-    const origPositions = new Float32Array(pos.array);
-    let minY = Infinity;
+    const srcGeo = obj.geometry;
+    const pos = srcGeo.attributes.position;
+    const idx = srcGeo.index;
+    if (!pos || !idx) return;
 
-    for (let i = 0; i < pos.count; i++) {
-      let x = pos.getX(i);
-      let y = pos.getY(i);
-      let z = pos.getZ(i);
+    const geo = srcGeo.clone();
+    const keepIndices = [];
 
-      const splitX = armSplitX(y);
-      const armMask =
-        smoothstep(splitX - 0.008, splitX + 0.01, Math.abs(x)) *
-        smoothstep(0.58, 0.65, y) *
-        (1 - smoothstep(1.25, 1.34, y));
+    const isHeadVertex = (vi) => {
+      const y = pos.getY(vi);
+      const z = pos.getZ(vi);
+      // Keep surgical mask & chin in front (z > 0.01) down to y=1.398; trim mottled back of neck cleanly at y=1.448
+      const cutoffY = z > 0.01 ? 1.398 : 1.448;
+      return y >= cutoffY;
+    };
 
-      // 1. Arm deformation (reaches onto bags or keyboard)
-      let armX = x;
-      let armY = y;
-      let armZ = z;
-      if (armMask > 0.001) {
-        const upperW = 1 - smoothstep(1.19, 1.29, y);
-        const [ay, az] = rotYZ(y, z, shoulderY, shoulderZ, shoulderAngle * upperW);
-
-        const foreW = 1 - smoothstep(0.94, 1.05, y);
-        const [fy, fz] = rotYZ(ay, az, bentElbowY, bentElbowZ, elbowAngle * foreW);
-
-        const converge = isSeated ? 0.045 : 0.028;
-        armX = x - Math.sign(x) * converge * foreW;
-        armY = fy;
-        armZ = fz;
-      }
-
-      // 2. Body & leg deformation
-      let bodyY = y;
-      let bodyZ = z;
-      if (isSeated) {
-        const hipW = 1 - smoothstep(0.73, 0.89, y);
-        if (hipW > 0.001) {
-          const [hy, hz] = rotYZ(y, z, hipY, hipZ, hipAngle * hipW);
-          const kneeW = 1 - smoothstep(0.37, 0.51, y);
-          if (kneeW > 0.001) {
-            const [ky, kz] = rotYZ(hy, hz, bentKneeY, bentKneeZ, kneeAngle * kneeW);
-            bodyY = ky;
-            bodyZ = kz;
-          } else {
-            bodyY = hy;
-            bodyZ = hz;
-          }
-        }
-      }
-
-      // Subtle forward torso lean above hip
-      const leanW = smoothstep(0.84, 1.04, y);
-      if (leanW > 0.001) {
-        const [ly, lz] = rotYZ(bodyY, bodyZ, hipY, hipZ, torsoLean * leanW);
-        bodyY = ly;
-        bodyZ = lz;
-        if (armMask > 0.001) {
-          const [aly, alz] = rotYZ(armY, armZ, hipY, hipZ, torsoLean * leanW);
-          armY = aly;
-          armZ = alz;
-        }
-      }
-
-      x = x + (armX - x) * armMask;
-      y = bodyY + (armY - bodyY) * armMask;
-      z = bodyZ + (armZ - bodyZ) * armMask;
-
-      pos.setXYZ(i, x, y, z);
-      if (y < minY) minY = y;
-    }
-
-    // Ground soles cleanly at y = 0
-    if (Number.isFinite(minY)) {
-      for (let i = 0; i < pos.count; i++) {
-        pos.setY(i, pos.getY(i) - minY);
+    for (let i = 0; i < idx.count; i += 3) {
+      const a = idx.getX(i);
+      const b = idx.getX(i + 1);
+      const c = idx.getX(i + 2);
+      if (isHeadVertex(a) && isHeadVertex(b) && isHeadVertex(c)) {
+        keepIndices.push(a, b, c);
       }
     }
 
-    // Eliminate any microscopic fused hand-to-thigh bridge triangles that stretched
-    cleanStretchedBridgeTriangles(geo, origPositions);
-
-    pos.needsUpdate = true;
-    geo.computeVertexNormals();
+    geo.setIndex(keepIndices);
+    // Center head pivot around skull base (y = 1.455 -> y = 0)
+    geo.translate(0, -1.455, 0);
     geo.computeBoundingBox();
     geo.computeBoundingSphere();
 
-    obj.geometry = geo;
-    obj.castShadow = true;
-    obj.receiveShadow = true;
+    const mesh = new THREE.Mesh(geo, obj.material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    headGroup.add(mesh);
   });
 
-  return copy;
+  return headGroup;
 }
 
-function OperatorInstance({ scene, position, rotationY = 0, scale = 1, pose = 'standingWork' }) {
-  const cloned = useMemo(() => createPosedCharacter(scene, pose), [scene, pose]);
-  const isSeated = pose === 'seatedTyping';
-  // Vertical offset from grounding shift on seated pose (~0.355 m)
-  const yOff = isSeated ? -0.355 : 0;
-  const lean = isSeated ? 0.08 : 0.11;
+// Shared organic body geometries & materials (built once for locked 60 FPS across all 5 operators)
+function useBodyAssets() {
+  return useMemo(() => {
+    // Clean sculpted neck (LatheGeometry)
+    const neckPts = [
+      new THREE.Vector2(0.056, -0.055),
+      new THREE.Vector2(0.047, -0.01),
+      new THREE.Vector2(0.044, 0.04),
+      new THREE.Vector2(0.05, 0.08),
+    ];
+    const neckGeo = new THREE.LatheGeometry(neckPts, 20);
+
+    // Closed matte navy fleece hoodie torso + smooth sloped shoulders + mock-neck collar
+    const torsoPts = [
+      new THREE.Vector2(0.0, 0.0),
+      new THREE.Vector2(0.156, 0.004),
+      new THREE.Vector2(0.162, 0.048),
+      new THREE.Vector2(0.172, 0.075),
+      new THREE.Vector2(0.168, 0.17),
+      new THREE.Vector2(0.178, 0.295),
+      new THREE.Vector2(0.172, 0.35),
+      new THREE.Vector2(0.154, 0.388),
+      new THREE.Vector2(0.124, 0.418),
+      new THREE.Vector2(0.084, 0.442),
+      new THREE.Vector2(0.068, 0.495),
+      new THREE.Vector2(0.052, 0.498),
+    ];
+    const torsoGeo = new THREE.LatheGeometry(torsoPts, 28);
+
+    // Waist hem (same matte navy, overlaps pants cleanly)
+    const hemPts = [
+      new THREE.Vector2(0.157, 0.0),
+      new THREE.Vector2(0.165, 0.006),
+      new THREE.Vector2(0.165, 0.052),
+      new THREE.Vector2(0.158, 0.054),
+    ];
+    const hemGeo = new THREE.LatheGeometry(hemPts, 26);
+
+    // Silver-gray front zipper following torso curvature
+    const zipCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0.012, 0.107),
+      new THREE.Vector3(0, 0.08, 0.114),
+      new THREE.Vector3(0, 0.2, 0.114),
+      new THREE.Vector3(0, 0.33, 0.123),
+      new THREE.Vector3(0, 0.415, 0.105),
+      new THREE.Vector3(0, 0.452, 0.058),
+      new THREE.Vector3(0, 0.492, 0.046),
+    ]);
+    const zipperGeo = new THREE.TubeGeometry(zipCurve, 22, 0.0038, 6, false);
+
+    // Parallel navy hoodie drawstrings
+    const makeDrawstring = (side) => {
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(side * 0.028, 0.46, 0.064),
+        new THREE.Vector3(side * 0.036, 0.41, 0.11),
+        new THREE.Vector3(side * 0.038, 0.34, 0.126),
+        new THREE.Vector3(side * 0.037, 0.27, 0.124),
+      ]);
+      return new THREE.TubeGeometry(curve, 16, 0.0038, 6, false);
+    };
+    const drawstringLeftGeo = makeDrawstring(-1);
+    const drawstringRightGeo = makeDrawstring(1);
+
+    // Flat folded back hood resting snug against shoulder blades
+    const hoodShape = new THREE.Shape();
+    hoodShape.moveTo(-0.112, 0.018);
+    hoodShape.bezierCurveTo(-0.124, -0.046, -0.068, -0.08, 0, -0.082);
+    hoodShape.bezierCurveTo(0.068, -0.08, 0.124, -0.046, 0.112, 0.018);
+    hoodShape.bezierCurveTo(0.096, 0.05, 0.052, 0.054, 0, 0.048);
+    hoodShape.bezierCurveTo(-0.052, 0.054, -0.096, 0.05, -0.112, 0.018);
+    const hoodGeo = new THREE.ExtrudeGeometry(hoodShape, {
+      depth: 0.017,
+      bevelEnabled: true,
+      bevelThickness: 0.011,
+      bevelSize: 0.011,
+      bevelSegments: 4,
+    });
+    hoodGeo.center();
+
+    // Split front kangaroo pocket
+    const makePocketGeo = (side) => {
+      const s = new THREE.Shape();
+      s.moveTo(0, 0);
+      s.lineTo(side * 0.105, 0);
+      s.lineTo(side * 0.122, 0.042);
+      s.lineTo(side * 0.085, 0.128);
+      s.lineTo(0, 0.128);
+      s.closePath();
+      return new THREE.ExtrudeGeometry(s, {
+        depth: 0.012,
+        bevelEnabled: true,
+        bevelThickness: 0.005,
+        bevelSize: 0.004,
+        bevelSegments: 2,
+      });
+    };
+    const pocketLeftGeo = makePocketGeo(-1);
+    const pocketRightGeo = makePocketGeo(1);
+
+    // Tapered sleeves & wrist cuff (LatheGeometry)
+    const upperSleeveGeo = new THREE.LatheGeometry(
+      [
+        new THREE.Vector2(0.048, -0.12),
+        new THREE.Vector2(0.054, 0.0),
+        new THREE.Vector2(0.06, 0.11),
+        new THREE.Vector2(0.054, 0.13),
+      ],
+      18
+    );
+    const forearmSleeveGeo = new THREE.LatheGeometry(
+      [
+        new THREE.Vector2(0.036, -0.095),
+        new THREE.Vector2(0.043, -0.015),
+        new THREE.Vector2(0.047, 0.095),
+        new THREE.Vector2(0.043, 0.11),
+      ],
+      18
+    );
+    const cuffGeo = new THREE.LatheGeometry(
+      [
+        new THREE.Vector2(0.031, -0.022),
+        new THREE.Vector2(0.035, 0.0),
+        new THREE.Vector2(0.0385, 0.022),
+      ],
+      16
+    );
+
+    // Sculpted organic palm (ExtrudeGeometry with soft bevel)
+    const palmShape = new THREE.Shape();
+    palmShape.moveTo(-0.021, 0.0);
+    palmShape.lineTo(0.021, 0.0);
+    palmShape.bezierCurveTo(0.029, -0.012, 0.03, -0.034, 0.026, -0.048);
+    palmShape.bezierCurveTo(0.016, -0.055, -0.016, -0.055, -0.026, -0.048);
+    palmShape.bezierCurveTo(-0.031, -0.032, -0.029, -0.012, -0.021, 0.0);
+    const palmGeo = new THREE.ExtrudeGeometry(palmShape, {
+      depth: 0.011,
+      bevelEnabled: true,
+      bevelThickness: 0.0055,
+      bevelSize: 0.004,
+      bevelSegments: 3,
+    });
+    palmGeo.translate(0, 0, -0.0055);
+
+    // Tapered cargo pant thighs & calves
+    const thighGeo = new THREE.LatheGeometry(
+      [
+        new THREE.Vector2(0.062, -0.19),
+        new THREE.Vector2(0.072, -0.04),
+        new THREE.Vector2(0.078, 0.14),
+        new THREE.Vector2(0.072, 0.19),
+      ],
+      18
+    );
+    const calfGeo = new THREE.LatheGeometry(
+      [
+        new THREE.Vector2(0.048, -0.19),
+        new THREE.Vector2(0.056, -0.02),
+        new THREE.Vector2(0.064, 0.16),
+        new THREE.Vector2(0.058, 0.19),
+      ],
+      18
+    );
+
+    // Low-top white sneaker sole
+    const soleShape = new THREE.Shape();
+    soleShape.moveTo(-0.045, -0.085);
+    soleShape.bezierCurveTo(-0.052, -0.01, -0.054, 0.075, -0.035, 0.125);
+    soleShape.bezierCurveTo(-0.015, 0.15, 0.015, 0.15, 0.035, 0.125);
+    soleShape.bezierCurveTo(0.054, 0.075, 0.052, -0.01, 0.045, -0.085);
+    soleShape.bezierCurveTo(0.035, -0.112, -0.035, -0.112, -0.045, -0.085);
+    const soleGeo = new THREE.ExtrudeGeometry(soleShape, {
+      depth: 0.016,
+      bevelEnabled: true,
+      bevelThickness: 0.004,
+      bevelSize: 0.003,
+      bevelSegments: 2,
+    });
+    soleGeo.rotateX(Math.PI / 2);
+
+    const materials = {
+      skin: new THREE.MeshPhysicalMaterial({
+        color: '#E2B498',
+        roughness: 0.68,
+        metalness: 0,
+        sheen: 0.15,
+        sheenRoughness: 0.85,
+      }),
+      napeHair: new THREE.MeshStandardMaterial({
+        color: '#3A2618',
+        roughness: 0.92,
+        metalness: 0,
+      }),
+      hoodie: new THREE.MeshPhysicalMaterial({
+        color: '#25354D',
+        roughness: 0.92,
+        metalness: 0,
+        sheen: 0.32,
+        sheenRoughness: 0.85,
+      }),
+      hoodieRib: new THREE.MeshPhysicalMaterial({
+        color: '#1E2B40',
+        roughness: 0.94,
+        metalness: 0,
+        sheen: 0.24,
+        sheenRoughness: 0.9,
+      }),
+      zipper: new THREE.MeshStandardMaterial({
+        color: '#A8B0BA',
+        metalness: 0.6,
+        roughness: 0.35,
+      }),
+      pants: new THREE.MeshPhysicalMaterial({
+        color: '#46474A',
+        roughness: 0.94,
+        metalness: 0,
+        sheen: 0.2,
+        sheenRoughness: 0.9,
+      }),
+      pantsPocket: new THREE.MeshPhysicalMaterial({
+        color: '#3F4043',
+        roughness: 0.95,
+        metalness: 0,
+        sheen: 0.18,
+      }),
+      sneaker: new THREE.MeshStandardMaterial({
+        color: '#F3F4F6',
+        roughness: 0.72,
+        metalness: 0,
+      }),
+      sneakerSole: new THREE.MeshStandardMaterial({
+        color: '#E4E7ED',
+        roughness: 0.8,
+        metalness: 0,
+      }),
+    };
+
+    return {
+      neckGeo,
+      torsoGeo,
+      hemGeo,
+      zipperGeo,
+      drawstringLeftGeo,
+      drawstringRightGeo,
+      hoodGeo,
+      pocketLeftGeo,
+      pocketRightGeo,
+      upperSleeveGeo,
+      forearmSleeveGeo,
+      cuffGeo,
+      palmGeo,
+      thighGeo,
+      calfGeo,
+      soleGeo,
+      materials,
+    };
+  }, []);
+}
+
+// Clean GLB head mounted on a smooth warm-skin neck with zero mottled texture artifacts
+function HybridHead({ glbHead, assets, y, tiltX = 0.14, turnY = 0 }) {
+  const headClone = useMemo(() => glbHead.clone(true), [glbHead]);
+  const { materials: m } = assets;
 
   return (
-    <group position={position} rotation={[0, rotationY, 0]} scale={scale}>
-      <primitive object={cloned} />
+    <group position={[0, y, 0.012]} rotation={[tiltX, turnY, 0]}>
+      {/* Smooth warm-skin neck connecting cleanly into mock-neck collar */}
+      <mesh geometry={assets.neckGeo} material={m.skin} position={[0, -0.02, -0.012]} castShadow />
+      {/* Smooth dark-brown inner skull base tucked invisibly inside the rear hairnet rim */}
+      <mesh material={m.napeHair} position={[0, 0.048, -0.024]} scale={[0.92, 0.88, 0.92]}>
+        <sphereGeometry args={[0.092, 16, 14]} />
+      </mesh>
+      {/* Pristine GLB face, eyes, surgical mask & translucent white hairnet */}
+      <primitive object={headClone} position={[0, 0.02, 0.005]} />
+    </group>
+  );
+}
 
-      {/* 1. Clean neck, nape hair rim & matte-navy mock-neck hoodie collar (completely covers mottled GLB neck texture) */}
-      <group position={[0, 1.365 + yOff, isSeated ? 0.022 : 0.036]} rotation={[lean, 0, 0]}>
-        {/* Clean warm matte skin neck wrapping full back/sides of neck up to the hairnet */}
-        <mesh position={[0, 0.036, -0.014]} castShadow>
-          <cylinderGeometry args={[0.072, 0.076, 0.12, 20]} />
-          <meshStandardMaterial color="#dfb396" roughness={0.72} metalness={0} />
-        </mesh>
-        {/* Clean dark-brown nape hair band tucked directly under the rear hairnet rim */}
-        <mesh position={[0, 0.082, -0.028]} rotation={[0.15, 0, 0]} scale={[1.05, 0.72, 0.92]} castShadow>
-          <cylinderGeometry args={[0.088, 0.078, 0.058, 20, 1, false, Math.PI * 0.45, Math.PI * 1.1]} />
-          <meshStandardMaterial color="#3a2618" roughness={0.92} metalness={0} />
-        </mesh>
-        {/* High matte navy fleece mock-neck collar covering lower neck cleanly */}
-        <mesh position={[0, -0.024, -0.012]} castShadow>
-          <cylinderGeometry args={[0.088, 0.102, 0.088, 22]} />
-          <meshStandardMaterial color="#25344b" roughness={0.93} metalness={0} />
-        </mesh>
-        {/* Soft draped navy hood rim tucked behind the collar */}
-        <mesh position={[0, -0.038, -0.062]} rotation={[0.35, 0, 0]} scale={[1.18, 0.68, 0.76]} castShadow>
-          <sphereGeometry args={[0.094, 16, 12]} />
-          <meshStandardMaterial color="#212f44" roughness={0.94} metalness={0} />
-        </mesh>
-      </group>
+// Closed navy fleece hoodie torso
+function ClosedHoodieTorso({ assets, slim = false }) {
+  const { materials: m } = assets;
+  return (
+    <group scale={[slim ? 0.92 : 1.0, 1, 1]}>
+      <mesh
+        geometry={assets.torsoGeo}
+        material={m.hoodie}
+        scale={[1.0, 1.0, 0.66]}
+        castShadow
+        receiveShadow
+      />
+      <mesh
+        geometry={assets.hemGeo}
+        material={m.hoodie}
+        position={[0, -0.008, 0]}
+        scale={[1.01, 1.05, 0.67]}
+        castShadow
+      />
+      <mesh geometry={assets.zipperGeo} material={m.zipper} />
+      <RoundedBox
+        args={[0.01, 0.022, 0.008]}
+        radius={0.003}
+        smoothness={2}
+        position={[0, 0.48, 0.052]}
+        rotation={[0.2, 0, 0]}
+        material={m.zipper}
+      />
+      <mesh geometry={assets.drawstringLeftGeo} material={m.hoodieRib} />
+      <mesh geometry={assets.drawstringRightGeo} material={m.hoodieRib} />
+      <mesh
+        geometry={assets.hoodGeo}
+        material={m.hoodie}
+        position={[0, 0.422, -0.084]}
+        rotation={[0.45, 0, 0]}
+        castShadow
+      />
+      <mesh
+        geometry={assets.pocketLeftGeo}
+        material={m.hoodie}
+        position={[-0.01, 0.058, 0.104]}
+        rotation={[0, -0.14, 0]}
+        castShadow
+      />
+      <mesh
+        geometry={assets.pocketRightGeo}
+        material={m.hoodie}
+        position={[0.01, 0.058, 0.104]}
+        rotation={[0, 0.14, 0]}
+        castShadow
+      />
+    </group>
+  );
+}
 
-      {/* 2. Solid inner navy hoodie torso & side-waist gussets (closes all arm-seam cutouts cleanly) */}
-      <group position={[0, 1.04 + yOff, isSeated ? 0.012 : 0.018]} rotation={[lean, 0, 0]}>
-        <mesh scale={[0.96, 1.0, 0.54]} castShadow receiveShadow>
-          <cylinderGeometry args={[0.138, 0.136, 0.42, 18]} />
-          <meshStandardMaterial color="#25344b" roughness={0.93} metalness={0} />
-        </mesh>
-        {/* Left & right side-waist fleece gussets under the arms */}
-        {[-1, 1].map((side) => (
-          <mesh key={`gusset-${side}`} position={[side * 0.118, -0.04, -0.01]} scale={[0.52, 1.0, 0.68]}>
-            <cylinderGeometry args={[0.075, 0.078, 0.34, 14]} />
-            <meshStandardMaterial color="#25344b" roughness={0.93} metalness={0} />
+// Seamless articulated hoodie arm + ribbed cuff + 5-finger organic hand (zero holes, zero ribbons)
+function ArticulatedArm({ assets, side = -1, pose = 'standing', slim = false }) {
+  const { materials: m } = assets;
+  const xBase = side * (slim ? 0.142 : 0.158);
+  const isSeated = pose === 'seated';
+
+  return (
+    <group position={[xBase, 0.372, 0.006]}>
+      {/* Flush shoulder transition */}
+      <mesh material={m.hoodie} scale={[0.84, 0.92, 0.88]} castShadow>
+        <sphereGeometry args={[slim ? 0.044 : 0.048, 12, 12]} />
+      </mesh>
+
+      {/* Upper arm sleeve */}
+      <group rotation={[isSeated ? -0.46 : -0.34, 0, side * -0.05]}>
+        <mesh
+          geometry={assets.upperSleeveGeo}
+          material={m.hoodie}
+          position={[0, -0.115, 0]}
+          castShadow
+        />
+
+        {/* Seamless elbow joint */}
+        <group position={[0, -0.22, 0]}>
+          <mesh material={m.hoodie} castShadow>
+            <sphereGeometry args={[slim ? 0.043 : 0.046, 12, 12]} />
           </mesh>
-        ))}
-      </group>
 
-      {/* 3. Solid charcoal hip & upper-thigh body completion (eliminates white specks on hip/thigh seams) */}
-      <group position={[0, isSeated ? 0.48 : 0.81, isSeated ? 0.005 : 0.0]}>
-        <mesh scale={[1.02, 0.74, 0.62]} castShadow receiveShadow>
-          <sphereGeometry args={[0.138, 16, 12]} />
-          <meshStandardMaterial color="#3b3c40" roughness={0.94} metalness={0} />
-        </mesh>
-        {/* Upper thigh liners matching standing vs seated pose */}
-        {[-1, 1].map((side) => (
-          <mesh
-            key={`thigh-fill-${side}`}
-            position={
-              isSeated
-                ? [side * 0.086, 0.0, 0.14]
-                : [side * 0.086, -0.14, 0.0]
-            }
-            rotation={isSeated ? [Math.PI / 2, 0, 0] : [0, 0, 0]}
-            castShadow
-            receiveShadow
-          >
-            <cylinderGeometry args={[0.068, 0.062, 0.28, 14]} />
-            <meshStandardMaterial color="#3b3c40" roughness={0.94} metalness={0} />
+          {/* Forearm sleeve */}
+          <group rotation={[isSeated ? -1.44 : -0.92, 0, side * (isSeated ? 0.22 : 0.16)]}>
+            <mesh
+              geometry={assets.forearmSleeveGeo}
+              material={m.hoodie}
+              position={[0, -0.105, 0]}
+              castShadow
+            />
+
+            {/* Ribbed wrist cuff (clean join, zero Z-fighting with forearm sleeve) */}
+            <mesh
+              geometry={assets.cuffGeo}
+              material={m.hoodieRib}
+              position={[0, -0.218, 0]}
+              castShadow
+            />
+
+            {/* Articulated 5-finger organic hand */}
+            <group position={[0, -0.236, 0.002]} rotation={[isSeated ? 0.22 : 0.34, side * -0.14, 0]}>
+              <mesh material={m.skin} position={[0, 0.008, 0]} scale={[0.92, 0.65, 0.65]}>
+                <sphereGeometry args={[0.019, 10, 8]} />
+              </mesh>
+              <mesh geometry={assets.palmGeo} material={m.skin} castShadow />
+
+              {/* Separate angled thumb */}
+              <group position={[-side * 0.024, -0.016, 0.006]} rotation={[0.28, side * -0.32, -side * 0.56]}>
+                <mesh material={m.skin} position={[0, -0.012, 0]} castShadow>
+                  <capsuleGeometry args={[0.0072, 0.014, 5, 8]} />
+                </mesh>
+                <group position={[0, -0.023, 0]} rotation={[0.38, 0, side * 0.22]}>
+                  <mesh material={m.skin} position={[0, -0.009, 0]} castShadow>
+                    <capsuleGeometry args={[0.0062, 0.011, 5, 8]} />
+                  </mesh>
+                </group>
+              </group>
+
+              {/* 4 differentiated curved fingers: index, middle, ring, pinky */}
+              {[
+                { name: 'index', offset: -0.019, len1: 0.017, len2: 0.013, r: 0.006, curl1: 0.28, curl2: 0.42 },
+                { name: 'middle', offset: -0.006, len1: 0.019, len2: 0.014, r: 0.0062, curl1: 0.32, curl2: 0.46 },
+                { name: 'ring', offset: 0.007, len1: 0.017, len2: 0.013, r: 0.0058, curl1: 0.36, curl2: 0.5 },
+                { name: 'pinky', offset: 0.019, len1: 0.013, len2: 0.01, r: 0.005, curl1: 0.4, curl2: 0.52 },
+              ].map((f) => (
+                <group
+                  key={f.name}
+                  position={[side * f.offset, -0.048, 0.001]}
+                  rotation={[f.curl1, 0, side * f.offset * 1.4]}
+                >
+                  <mesh material={m.skin} position={[0, -f.len1 * 0.5, 0]} castShadow>
+                    <capsuleGeometry args={[f.r, f.len1, 5, 8]} />
+                  </mesh>
+                  <group position={[0, -f.len1 - 0.002, 0]} rotation={[f.curl2, 0, 0]}>
+                    <mesh material={m.skin} position={[0, -f.len2 * 0.5, 0]} castShadow>
+                      <capsuleGeometry args={[f.r * 0.86, f.len2, 5, 8]} />
+                    </mesh>
+                  </group>
+                </group>
+              ))}
+            </group>
+          </group>
+        </group>
+      </group>
+    </group>
+  );
+}
+
+// Low-top white sneaker
+function WhiteSneaker({ assets, position }) {
+  const { materials: m } = assets;
+  return (
+    <group position={position}>
+      <mesh geometry={assets.soleGeo} material={m.sneakerSole} position={[0, 0.02, 0.02]} castShadow />
+      <mesh material={m.sneaker} position={[0, 0.044, 0.018]} scale={[0.88, 0.62, 1.82]} castShadow receiveShadow>
+        <sphereGeometry args={[0.056, 14, 12]} />
+      </mesh>
+      <mesh material={m.sneaker} position={[0, 0.068, -0.028]} castShadow>
+        <cylinderGeometry args={[0.044, 0.048, 0.032, 14]} />
+      </mesh>
+      {[0.025, 0.044, 0.062].map((z, i) => (
+        <RoundedBox
+          key={i}
+          args={[0.044 - i * 0.004, 0.005, 0.008]}
+          radius={0.002}
+          smoothness={2}
+          position={[0, 0.072 - i * 0.006, z]}
+          rotation={[0.32, 0, 0]}
+          material={m.sneakerSole}
+        />
+      ))}
+    </group>
+  );
+}
+
+// Slim side cargo pocket
+function SlimCargoPocket({ assets, side = 1, position, rotation = [0, 0, 0] }) {
+  const { materials: m } = assets;
+  return (
+    <group position={position} rotation={rotation}>
+      <RoundedBox args={[0.009, 0.138, 0.102]} radius={0.003} smoothness={2} material={m.pantsPocket} castShadow />
+      <RoundedBox args={[0.003, 0.12, 0.006]} radius={0.001} smoothness={1} position={[side * 0.005, -0.006, 0]} material={m.pants} />
+      <RoundedBox args={[0.011, 0.028, 0.106]} radius={0.003} smoothness={2} position={[side * 0.001, 0.056, 0]} material={m.pants} />
+    </group>
+  );
+}
+
+// Standing operator touching bags on Embolsado / Seedless tables
+function StandingHybridOperator({ glbHead, assets, position, rotationY = 0, heightScale = 1, turnY = 0 }) {
+  const { materials: m } = assets;
+  return (
+    <group position={position} rotation={[0, rotationY, 0]} scale={[1, heightScale, 1]}>
+      <WhiteSneaker assets={assets} position={[-0.098, 0, 0.015]} />
+      <WhiteSneaker assets={assets} position={[0.098, 0, 0.015]} />
+
+      {[-1, 1].map((side) => (
+        <group key={`leg-${side}`} position={[side * 0.098, 0, 0]}>
+          <mesh geometry={assets.calfGeo} material={m.pants} position={[0, 0.27, 0]} castShadow receiveShadow />
+          <mesh material={m.pants} position={[0, 0.46, 0.004]} castShadow>
+            <sphereGeometry args={[0.06, 12, 10]} />
           </mesh>
-        ))}
+          <mesh geometry={assets.thighGeo} material={m.pants} position={[0, 0.65, 0.004]} castShadow receiveShadow />
+          <SlimCargoPocket assets={assets} side={side} position={[side * 0.068, 0.58, 0.004]} />
+        </group>
+      ))}
+
+      <mesh material={m.pants} position={[0, 0.855, 0]} scale={[1.04, 0.65, 0.68]} castShadow>
+        <sphereGeometry args={[0.158, 16, 12]} />
+      </mesh>
+
+      <group position={[0, 0.895, 0]} rotation={[0.16, 0, 0]}>
+        <ClosedHoodieTorso assets={assets} />
+        <ArticulatedArm assets={assets} side={-1} pose="standing" />
+        <ArticulatedArm assets={assets} side={1} pose="standing" />
+        <HybridHead glbHead={glbHead} assets={assets} y={0.515} tiltX={0.18} turnY={turnY} />
+      </group>
+    </group>
+  );
+}
+
+// Seated operator typing cleanly on the Zebra ZT411 keyboard
+function SeatedHybridOperator({ glbHead, assets, position, rotationY = 0 }) {
+  const { materials: m } = assets;
+  return (
+    <group position={position} rotation={[0, rotationY, 0]}>
+      <WhiteSneaker assets={assets} position={[-0.094, 0, 0.32]} />
+      <WhiteSneaker assets={assets} position={[0.094, 0, 0.32]} />
+
+      {[-1, 1].map((side) => (
+        <group key={`sleg-${side}`} position={[side * 0.094, 0, 0]}>
+          <mesh geometry={assets.calfGeo} material={m.pants} position={[0, 0.27, 0.295]} rotation={[0.08, 0, 0]} castShadow />
+          <mesh material={m.pants} position={[0, 0.485, 0.282]} castShadow>
+            <sphereGeometry args={[0.064, 12, 10]} />
+          </mesh>
+          <mesh geometry={assets.thighGeo} material={m.pants} position={[0, 0.505, 0.115]} rotation={[Math.PI / 2, 0, 0]} castShadow />
+          <SlimCargoPocket assets={assets} side={side} position={[side * 0.066, 0.505, 0.14]} rotation={[Math.PI / 2, 0, 0]} />
+        </group>
+      ))}
+
+      <mesh material={m.pants} position={[0, 0.525, -0.025]} scale={[1.0, 0.62, 0.72]} castShadow>
+        <sphereGeometry args={[0.155, 16, 12]} />
+      </mesh>
+
+      <group position={[0, 0.56, -0.025]} rotation={[0.11, 0, 0]}>
+        <ClosedHoodieTorso assets={assets} slim />
+        <ArticulatedArm assets={assets} side={-1} pose="seated" slim />
+        <ArticulatedArm assets={assets} side={1} pose="seated" slim />
+        <HybridHead glbHead={glbHead} assets={assets} y={0.515} tiltX={0.1} />
       </group>
     </group>
   );
@@ -265,48 +584,53 @@ function OperatorInstance({ scene, position, rotationY = 0, scale = 1, pose = 's
 
 export default function Operators() {
   const { scene } = useGLTF(MODEL_URL);
+  const glbHead = useMemo(() => extractCleanGlbHead(scene), [scene]);
+  const assets = useBodyAssets();
 
   return (
     <group name="room-operators">
-      {/* 1. Seated operator typing on keyboard at Estación Zebra ZT411 */}
-      <OperatorInstance
-        scene={scene}
-        position={[-0.96, 0, 1.2]}
-        rotationY={-Math.PI / 2 + 0.06}
-        scale={0.98}
-        pose="seatedTyping"
+      {/* 1. Seated operator typing cleanly on Zebra ZT411 keyboard */}
+      <SeatedHybridOperator
+        glbHead={glbHead}
+        assets={assets}
+        position={[-0.92, 0, 1.2]}
+        rotationY={-Math.PI / 2 + 0.08}
       />
 
       {/* 2-4. Three standing operators handling bags along the 4.0 m Embolsado bench */}
-      <OperatorInstance
-        scene={scene}
-        position={[1.02, 0, -1.28]}
+      <StandingHybridOperator
+        glbHead={glbHead}
+        assets={assets}
+        position={[0.96, 0, -1.28]}
         rotationY={Math.PI / 2}
-        scale={1.01}
-        pose="standingWork"
+        heightScale={1.01}
+        turnY={0.08}
       />
-      <OperatorInstance
-        scene={scene}
-        position={[1.02, 0, -0.42]}
+      <StandingHybridOperator
+        glbHead={glbHead}
+        assets={assets}
+        position={[0.96, 0, -0.42]}
         rotationY={Math.PI / 2}
-        scale={0.99}
-        pose="standingWork"
+        heightScale={0.99}
+        turnY={-0.06}
       />
-      <OperatorInstance
-        scene={scene}
-        position={[1.02, 0, 0.44]}
+      <StandingHybridOperator
+        glbHead={glbHead}
+        assets={assets}
+        position={[0.96, 0, 0.44]}
         rotationY={Math.PI / 2}
-        scale={1.0}
-        pose="standingWork"
+        heightScale={1.0}
+        turnY={0.05}
       />
 
       {/* 5. Standing operator handling bags at Seedless front table */}
-      <OperatorInstance
-        scene={scene}
-        position={[0.45, 0, 1.08]}
+      <StandingHybridOperator
+        glbHead={glbHead}
+        assets={assets}
+        position={[0.45, 0, 1.02]}
         rotationY={0}
-        scale={0.99}
-        pose="standingWork"
+        heightScale={0.99}
+        turnY={-0.04}
       />
     </group>
   );
