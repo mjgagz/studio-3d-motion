@@ -39,11 +39,11 @@ const smooth = (e0, e1, x) => {
 function hairLowY(a) {
   const d = (Math.abs(a) * 180) / Math.PI;
   const front = 0.064; // short fringe above the eyebrows
-  const sideburn = 0.012; // clean sideburn, clear of the mask edge
-  const aboveEar = 0.04; // leaves the ear visible
-  const nape = -0.072; // full nape
+  const sideburn = 0.0; // clean sideburn, clear of the mask edge
+  const aboveEar = 0.03; // leaves the ear visible
+  const nape = -0.098; // full nape
   let y = front;
-  y += (sideburn - front) * smooth(48, 70, d);
+  y += (sideburn - front) * smooth(44, 66, d);
   y += (aboveEar - sideburn) * smooth(76, 84, d);
   y += (nape - aboveEar) * smooth(108, 140, d);
   return y;
@@ -61,7 +61,7 @@ function createHairGeometry() {
       const top = bandBaseY(a) + 0.01;
       const low = hairLowY(a);
       const yy = low + (top - low) * v;
-      const thick = 0.0015 + 0.0062 * smooth(0, 0.45, v);
+      const thick = (0.002 + 0.0105 * smooth(0, 0.5, v)) * (1 - 0.3 * smooth(0.8, 1, v));
       const r = headRadiusAt(yy) + thick;
       positions.push(
         Math.sin(a) * r * HEAD_SCALE[0],
