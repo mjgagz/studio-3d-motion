@@ -11,7 +11,7 @@ function createHairnetPleatTexture() {
   canvas.height = size;
   const ctx = canvas.getContext('2d');
 
-  ctx.fillStyle = '#e8ecf2';
+  ctx.fillStyle = '#f5f7fa';
   ctx.fillRect(0, 0, size, size);
 
   const pleats = 36;
@@ -19,9 +19,9 @@ function createHairnetPleatTexture() {
     const x = (i / pleats) * size;
     const w = size / pleats;
     const grad = ctx.createLinearGradient(x, 0, x + w, 0);
-    grad.addColorStop(0, '#cfd6df');
+    grad.addColorStop(0, '#eaeef3');
     grad.addColorStop(0.5, '#ffffff');
-    grad.addColorStop(1, '#cfd6df');
+    grad.addColorStop(1, '#eaeef3');
     ctx.fillStyle = grad;
     ctx.fillRect(x, 0, w, size);
   }
@@ -118,26 +118,26 @@ function useCharacterAssets() {
     ];
     const neckGeo = new THREE.LatheGeometry(neckPts, 18);
 
-    // 2. Bouffant sanitary hairnet LatheGeometry (softly puffed over crown, gathered at band)
+    // 2. Closer-fitting bouffant sanitary hairnet LatheGeometry (~15% slimmer volume)
     const hairnetPts = [
-      new THREE.Vector2(0.108, -0.015),
-      new THREE.Vector2(0.128, 0.015),
-      new THREE.Vector2(0.142, 0.058),
-      new THREE.Vector2(0.144, 0.102),
-      new THREE.Vector2(0.128, 0.14),
-      new THREE.Vector2(0.09, 0.165),
-      new THREE.Vector2(0.042, 0.175),
-      new THREE.Vector2(0.0, 0.178),
+      new THREE.Vector2(0.102, -0.01),
+      new THREE.Vector2(0.114, 0.018),
+      new THREE.Vector2(0.122, 0.056),
+      new THREE.Vector2(0.122, 0.095),
+      new THREE.Vector2(0.108, 0.128),
+      new THREE.Vector2(0.076, 0.148),
+      new THREE.Vector2(0.036, 0.156),
+      new THREE.Vector2(0.0, 0.158),
     ];
     const hairnetGeo = new THREE.LatheGeometry(hairnetPts, 36);
-    // Add subtle radial puffiness displacement to hairnet vertices
+    // Very subtle radial puffiness displacement
     const hnPos = hairnetGeo.attributes.position;
     for (let i = 0; i < hnPos.count; i++) {
       const vx = hnPos.getX(i);
       const vy = hnPos.getY(i);
       const vz = hnPos.getZ(i);
       const angle = Math.atan2(vx, vz);
-      const puff = 1 + Math.sin(angle * 18) * 0.018 * Math.min(1, Math.max(0, (vy + 0.015) / 0.12));
+      const puff = 1 + Math.sin(angle * 18) * 0.01 * Math.min(1, Math.max(0, (vy + 0.01) / 0.11));
       hnPos.setXYZ(i, vx * puff, vy, vz * puff);
     }
     hairnetGeo.computeVertexNormals();
@@ -248,18 +248,18 @@ function useCharacterAssets() {
     const drawstringLeftGeo = makeDrawstring(-1);
     const drawstringRightGeo = makeDrawstring(1);
 
-    // Flat folded hood resting snug behind neck & upper back (ExtrudeGeometry with soft bevel)
+    // Flat folded hood resting snug behind neck & shoulder blades (~30% thinner)
     const hoodShape = new THREE.Shape();
-    hoodShape.moveTo(-0.115, 0.02);
-    hoodShape.bezierCurveTo(-0.13, -0.05, -0.07, -0.085, 0, -0.088);
-    hoodShape.bezierCurveTo(0.07, -0.085, 0.13, -0.05, 0.115, 0.02);
-    hoodShape.bezierCurveTo(0.1, 0.055, 0.055, 0.06, 0, 0.052);
-    hoodShape.bezierCurveTo(-0.055, 0.06, -0.1, 0.055, -0.115, 0.02);
+    hoodShape.moveTo(-0.112, 0.018);
+    hoodShape.bezierCurveTo(-0.124, -0.046, -0.068, -0.08, 0, -0.082);
+    hoodShape.bezierCurveTo(0.068, -0.08, 0.124, -0.046, 0.112, 0.018);
+    hoodShape.bezierCurveTo(0.096, 0.05, 0.052, 0.054, 0, 0.048);
+    hoodShape.bezierCurveTo(-0.052, 0.054, -0.096, 0.05, -0.112, 0.018);
     const hoodGeo = new THREE.ExtrudeGeometry(hoodShape, {
-      depth: 0.026,
+      depth: 0.017,
       bevelEnabled: true,
-      bevelThickness: 0.016,
-      bevelSize: 0.014,
+      bevelThickness: 0.011,
+      bevelSize: 0.011,
       bevelSegments: 4,
     });
     hoodGeo.center();
@@ -383,12 +383,12 @@ function useCharacterAssets() {
         color: '#F2F4F7',
         map: hairnetTex,
         bumpMap: hairnetTex,
-        bumpScale: 0.004,
+        bumpScale: 0.0014,
         transparent: true,
-        opacity: 0.82,
+        opacity: 0.78,
         roughness: 0.92,
         metalness: 0,
-        sheen: 0.2,
+        sheen: 0.18,
         side: THREE.DoubleSide,
         depthWrite: false,
       }),
@@ -429,14 +429,14 @@ function useCharacterAssets() {
         roughness: 0.35,
       }),
       pants: new THREE.MeshPhysicalMaterial({
-        color: '#3D3E40',
+        color: '#4B4C4F',
         roughness: 0.94,
         metalness: 0,
         sheen: 0.2,
         sheenRoughness: 0.9,
       }),
       pantsPocket: new THREE.MeshPhysicalMaterial({
-        color: '#363739',
+        color: '#434447',
         roughness: 0.95,
         metalness: 0,
         sheen: 0.18,
@@ -553,17 +553,17 @@ function CharacterHead({ assets, y, tiltX = 0.14, turnY = 0, fullerHairBase = fa
       <mesh
         material={m.hairBase}
         position={[0, 0.056, -0.012]}
-        scale={fullerHairBase ? [1.06, 1.04, 1.08] : [1.0, 1.02, 1.04]}
+        scale={fullerHairBase ? [1.0, 1.0, 1.02] : [0.96, 0.98, 0.98]}
       >
-        <sphereGeometry args={[0.101, 16, 14]} />
+        <sphereGeometry args={[0.098, 16, 14]} />
       </mesh>
 
-      {/* Bouffant semi-translucent white sanitary hairnet */}
+      {/* Closer-fitting bouffant semi-translucent white sanitary hairnet */}
       <mesh
         geometry={assets.hairnetGeo}
         material={m.hairnet}
-        position={[0, 0.012, -0.01]}
-        scale={fullerHairBase ? [1.04, 1.04, 1.06] : [1.0, 1.0, 1.02]}
+        position={[0, 0.014, -0.008]}
+        scale={fullerHairBase ? [1.0, 1.0, 1.02] : [0.98, 0.98, 1.0]}
         castShadow
       />
 
@@ -599,11 +599,12 @@ function ClosedHoodieTorso({ assets, slim = false }) {
         receiveShadow
       />
 
-      {/* Ribbed waist hem */}
+      {/* Waist hem in exact same matte navy (#2B3A52) overlapping pants seamlessly */}
       <mesh
         geometry={assets.hemGeo}
-        material={m.hoodieRib}
-        scale={[1.0, 1.0, 0.66]}
+        material={m.hoodie}
+        position={[0, -0.008, 0]}
+        scale={[1.01, 1.05, 0.67]}
         castShadow
       />
 
@@ -622,12 +623,12 @@ function ClosedHoodieTorso({ assets, slim = false }) {
       <mesh geometry={assets.drawstringLeftGeo} material={m.hoodieRib} />
       <mesh geometry={assets.drawstringRightGeo} material={m.hoodieRib} />
 
-      {/* Flat folded hood resting snug behind neck and upper back */}
+      {/* Flattened hood resting snug against shoulder blades */}
       <mesh
         geometry={assets.hoodGeo}
         material={m.hoodie}
-        position={[0, 0.425, -0.095]}
-        rotation={[0.42, 0, 0]}
+        position={[0, 0.422, -0.084]}
+        rotation={[0.45, 0, 0]}
         castShadow
       />
 
@@ -650,21 +651,21 @@ function ClosedHoodieTorso({ assets, slim = false }) {
   );
 }
 
-// Articulated tapered hoodie sleeve + ribbed cuff + organic stylized hand (zero elbow/shoulder gaps)
+// Articulated tapered hoodie sleeve + ribbed cuff + organic stylized hand (flush shoulders, bent elbows)
 function OrganicArm({ assets, side = -1, pose = 'standing', slim = false }) {
   const { materials: m } = assets;
-  const xBase = side * (slim ? 0.146 : 0.166);
+  const xBase = side * (slim ? 0.14 : 0.156);
   const isSeated = pose === 'seated';
 
   return (
-    <group position={[xBase, 0.376, 0.006]}>
-      {/* Seamless tapered shoulder transition */}
-      <mesh material={m.hoodie} scale={[0.88, 1.0, 0.92]} castShadow>
-        <sphereGeometry args={[slim ? 0.052 : 0.056, 14, 12]} />
+    <group position={[xBase, 0.372, 0.006]}>
+      {/* Flush shoulder transition integrated cleanly with torso and sleeve */}
+      <mesh material={m.hoodie} scale={[0.82, 0.9, 0.86]} castShadow>
+        <sphereGeometry args={[slim ? 0.042 : 0.046, 12, 12]} />
       </mesh>
 
-      {/* Upper arm sleeve */}
-      <group rotation={[isSeated ? -0.48 : -0.42, 0, side * -0.1]}>
+      {/* Upper arm sleeve kept closer to torso */}
+      <group rotation={[isSeated ? -0.46 : -0.34, 0, side * -0.05]}>
         <mesh
           geometry={assets.upperSleeveGeo}
           material={m.hoodie}
@@ -672,14 +673,14 @@ function OrganicArm({ assets, side = -1, pose = 'standing', slim = false }) {
           castShadow
         />
 
-        {/* Seamless elbow joint */}
+        {/* Seamless elbow joint with ~30° natural bend */}
         <group position={[0, -0.22, 0]}>
           <mesh material={m.hoodie} castShadow>
-            <sphereGeometry args={[slim ? 0.045 : 0.048, 12, 12]} />
+            <sphereGeometry args={[slim ? 0.042 : 0.046, 12, 12]} />
           </mesh>
 
-          {/* Forearm sleeve */}
-          <group rotation={[isSeated ? -1.32 : -0.78, 0, side * 0.2]}>
+          {/* Forearm sleeve angled naturally over work area */}
+          <group rotation={[isSeated ? -1.44 : -0.92, 0, side * (isSeated ? 0.22 : 0.16)]}>
             <mesh
               geometry={assets.forearmSleeveGeo}
               material={m.hoodie}
@@ -695,8 +696,8 @@ function OrganicArm({ assets, side = -1, pose = 'standing', slim = false }) {
               castShadow
             />
 
-            {/* Organic stylized hand (soft palm + thumb + gently curved fingers) */}
-            <group position={[0, -0.268, 0.008]} rotation={[0.18, side * -0.15, 0]}>
+            {/* Organic stylized hand resting cleanly above bags/keyboard */}
+            <group position={[0, -0.264, 0.01]} rotation={[isSeated ? 0.24 : 0.36, side * -0.14, 0]}>
               {/* Palm */}
               <mesh material={m.skin} scale={[0.92, 1.15, 0.55]} castShadow>
                 <sphereGeometry args={[0.032, 12, 10]} />
@@ -760,34 +761,34 @@ function LowTopWhiteSneaker({ assets, position }) {
   );
 }
 
-// Slim side cargo pocket with subtle center vertical pleat & flat top flap
+// Ultra-slim side cargo pocket (half depth) with subtle vertical pleat & flat top flap
 function SlimCargoPocket({ assets, side = 1, position, rotation = [0, 0, 0] }) {
   const { materials: m } = assets;
 
   return (
     <group position={position} rotation={rotation}>
-      {/* Thin pocket body hugging the thigh */}
+      {/* Very thin pocket body hugging the thigh */}
       <RoundedBox
-        args={[0.018, 0.142, 0.105]}
-        radius={0.005}
+        args={[0.009, 0.138, 0.102]}
+        radius={0.003}
         smoothness={2}
         material={m.pantsPocket}
         castShadow
       />
       {/* Subtle vertical pleat crease */}
       <RoundedBox
-        args={[0.004, 0.125, 0.008]}
+        args={[0.003, 0.12, 0.006]}
         radius={0.001}
         smoothness={1}
-        position={[side * 0.009, -0.006, 0]}
+        position={[side * 0.005, -0.006, 0]}
         material={m.pants}
       />
       {/* Thin flat top flap */}
       <RoundedBox
-        args={[0.021, 0.032, 0.11]}
-        radius={0.004}
+        args={[0.011, 0.028, 0.106]}
+        radius={0.003}
         smoothness={2}
-        position={[side * 0.001, 0.058, 0]}
+        position={[side * 0.001, 0.056, 0]}
         material={m.pants}
       />
     </group>
@@ -815,7 +816,7 @@ function StandingOperator({ assets, position, rotationY = 0, heightScale = 1, tu
           {/* Thigh */}
           <mesh geometry={assets.thighGeo} material={m.pants} position={[0, 0.65, 0.004]} castShadow receiveShadow />
           {/* Slim side cargo pocket */}
-          <SlimCargoPocket assets={assets} side={side} position={[side * 0.072, 0.58, 0.004]} />
+          <SlimCargoPocket assets={assets} side={side} position={[side * 0.068, 0.58, 0.004]} />
         </group>
       ))}
 
@@ -824,12 +825,12 @@ function StandingOperator({ assets, position, rotationY = 0, heightScale = 1, tu
         <sphereGeometry args={[0.158, 16, 12]} />
       </mesh>
 
-      {/* Upper body gently leaning toward packing table */}
-      <group position={[0, 0.895, 0]} rotation={[0.09, 0, 0]}>
+      {/* Upper body leaning naturally forward (~9°) and head looking down (~13°) at bags */}
+      <group position={[0, 0.895, 0]} rotation={[0.16, 0, 0]}>
         <ClosedHoodieTorso assets={assets} />
         <OrganicArm assets={assets} side={-1} pose="standing" />
         <OrganicArm assets={assets} side={1} pose="standing" />
-        <CharacterHead assets={assets} y={0.62} tiltX={0.2} turnY={turnY} />
+        <CharacterHead assets={assets} y={0.62} tiltX={0.23} turnY={turnY} />
       </group>
     </group>
   );
@@ -871,7 +872,7 @@ function SeatedOperator({ assets, position, rotationY = 0 }) {
           <SlimCargoPocket
             assets={assets}
             side={side}
-            position={[side * 0.07, 0.505, 0.14]}
+            position={[side * 0.066, 0.505, 0.14]}
             rotation={[Math.PI / 2, 0, 0]}
           />
         </group>
@@ -882,12 +883,12 @@ function SeatedOperator({ assets, position, rotationY = 0 }) {
         <sphereGeometry args={[0.155, 16, 12]} />
       </mesh>
 
-      {/* Seated torso + closed navy hoodie + hairnet + surgical mask */}
-      <group position={[0, 0.56, -0.025]} rotation={[0.06, 0, 0]}>
+      {/* Seated torso leaning slightly forward (~7°) toward monitor/keyboard */}
+      <group position={[0, 0.56, -0.025]} rotation={[0.11, 0, 0]}>
         <ClosedHoodieTorso assets={assets} slim />
         <OrganicArm assets={assets} side={-1} pose="seated" slim />
         <OrganicArm assets={assets} side={1} pose="seated" slim />
-        <CharacterHead assets={assets} y={0.615} tiltX={0.08} fullerHairBase />
+        <CharacterHead assets={assets} y={0.615} tiltX={0.14} fullerHairBase />
       </group>
     </group>
   );
