@@ -33,6 +33,30 @@ function createHairnetPleatTexture() {
   return tex;
 }
 
+// Very subtle fine-strand relief texture for the hair (no plastic shine)
+function createHairBumpTexture() {
+  if (typeof document === 'undefined') return null;
+  const w = 128;
+  const h = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#808080';
+  ctx.fillRect(0, 0, w, h);
+  for (let i = 0; i < 260; i++) {
+    const x = Math.random() * w;
+    const v = 110 + Math.floor(Math.random() * 40);
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.fillRect(x, 0, 1, h);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 1);
+  return tex;
+}
+
 // Build anatomical curved surgical mask mesh hugging nose bridge, cheeks, and chin
 function createSurgicalMaskGeometry() {
   const segU = 22;
@@ -157,87 +181,59 @@ function useCharacterAssets() {
     const bandCurve = new THREE.CatmullRomCurve3(bandPts, true);
     const hairnetBandGeo = new THREE.TubeGeometry(bandCurve, 72, 0.008, 8, true);
 
-    // 2b. Organic layered hair strands peeking below the hairnet elastic band (#2E1E15)
-    // Tapered fringe / bangs locks emerging across upper forehead (above eyebrows)
-    const makeHairStrandGeo = (pts, radius = 0.011) => {
-      const curve = new THREE.CatmullRomCurve3(pts);
-      const geo = new THREE.TubeGeometry(curve, 12, radius, 8, false);
-      // Taper tip smoothly toward the end of each lock
-      const pos = geo.attributes.position;
-      const radialSegs = 8;
-      const tubularSegs = 12;
-      for (let i = 0; i <= tubularSegs; i++) {
-        const t = i / tubularSegs;
-        const center = curve.getPointAt(t);
-        // Taper at both root (slight) and tip (pointed organic lock)
-        const scale = t < 0.2 ? 0.85 + t * 0.75 : Math.max(0.18, 1 - Math.pow((t - 0.2) / 0.8, 1.5) * 0.82);
-        for (let j = 0; j <= radialSegs; j++) {
-          const idx = i * (radialSegs + 1) + j;
-          const vx = pos.getX(idx);
-          const vy = pos.getY(idx);
-          const vz = pos.getZ(idx);
-          pos.setXYZ(
-            idx,
-            center.x + (vx - center.x) * scale,
-            center.y + (vy - center.y) * scale * 0.65, // flatten slightly like natural hair ribbon
-            center.z + (vz - center.z) * scale
-          );
-        }
+    // 2b. Smooth continuous hair shells hugging the skull contour (#3A2618)
+    // Head surface radius sampled from headPts (scaled by the head mesh scale in JSX)
+    const headRadiusAt = (yy) => {
+      const table = [
+        [-0.005, 0.104],
+        [0.038, 0.106],
+        [0.062, 0.1],
+        [0.082, 0.096],
+      ];
+      if (yy <= table[0][0]) return table[0][1];
+      for (let i = 0; i < table.length - 1; i++) {
+        const [y0, r0] = table[i];
+        const [y1, r1] = table[i + 1];
+        if (yy <= y1) return r0 + ((yy - y0) / (y1 - y0)) * (r1 - r0);
       }
-      geo.computeVertexNormals();
-      return geo;
+      return table[table.length - 1][1];
+    };
+    const hairShellPts = (yBottom, yTop, steps, lift) => {
+      const pts = [];
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const yy = yBottom + (yTop - yBottom) * t;
+        // Lower edge hugs the skin (almost flush), thickening smoothly toward the top
+        const thickness = 0.0006 + lift * Math.pow(t, 0.7);
+        pts.push(new THREE.Vector2(headRadiusAt(yy) + thickness, yy));
+      }
+      return pts;
     };
 
-    const fringeLocks = [
-      makeHairStrandGeo([
-        new THREE.Vector3(-0.072, 0.072, 0.076),
-        new THREE.Vector3(-0.068, 0.058, 0.088),
-        new THREE.Vector3(-0.056, 0.044, 0.095),
-      ], 0.013),
-      makeHairStrandGeo([
-        new THREE.Vector3(-0.042, 0.075, 0.088),
-        new THREE.Vector3(-0.036, 0.062, 0.098),
-        new THREE.Vector3(-0.022, 0.049, 0.103),
-      ], 0.014),
-      makeHairStrandGeo([
-        new THREE.Vector3(-0.008, 0.076, 0.092),
-        new THREE.Vector3(-0.002, 0.063, 0.102),
-        new THREE.Vector3(0.01, 0.05, 0.105),
-      ], 0.014),
-      makeHairStrandGeo([
-        new THREE.Vector3(0.028, 0.075, 0.09),
-        new THREE.Vector3(0.035, 0.061, 0.099),
-        new THREE.Vector3(0.045, 0.048, 0.101),
-      ], 0.014),
-      makeHairStrandGeo([
-        new THREE.Vector3(0.06, 0.072, 0.082),
-        new THREE.Vector3(0.068, 0.057, 0.09),
-        new THREE.Vector3(0.074, 0.044, 0.09),
-      ], 0.013),
-    ];
+    // Short even fringe: continuous front arc peeking under the hairnet band, above eyebrows
+    const fringeGeo = new THREE.LatheGeometry(
+      hairShellPts(0.057, 0.078, 6, 0.0045),
+      40,
+      -1.02,
+      2.04
+    );
+    fringeGeo.computeVertexNormals();
 
-    // Elongated sculpted sideburns curving down in front of both ears
-    const makeSideburnGeo = (side) =>
-      makeHairStrandGeo([
-        new THREE.Vector3(side * 0.096, 0.058, 0.034),
-        new THREE.Vector3(side * 0.101, 0.026, 0.028),
-        new THREE.Vector3(side * 0.098, -0.006, 0.02),
-        new THREE.Vector3(side * 0.092, -0.03, 0.012),
-      ], 0.014);
-    const sideburnLeftGeo = makeSideburnGeo(-1);
-    const sideburnRightGeo = makeSideburnGeo(1);
-
-    // Fuller layered nape hair locks curving smoothly along the back of the head & upper neck
-    const napeLocks = [-0.078, -0.052, -0.026, 0.0, 0.026, 0.052, 0.078].map((x, idx) => {
-      const edgeFactor = Math.abs(x) / 0.08;
-      const zBase = -0.096 + edgeFactor * 0.038;
-      const drop = -0.078 + edgeFactor * 0.016 - (idx % 2) * 0.008;
-      return makeHairStrandGeo([
-        new THREE.Vector3(x * 1.05, 0.034, zBase),
-        new THREE.Vector3(x * 1.02, -0.016, zBase - 0.01),
-        new THREE.Vector3(x * 0.94, drop, zBase + 0.004),
-      ], 0.017);
-    });
+    // Short clean sideburns at both temples (end above the mask edge)
+    const sideburnRightGeo = new THREE.LatheGeometry(
+      hairShellPts(0.008, 0.07, 10, 0.0042),
+      16,
+      1.08,
+      0.36
+    );
+    sideburnRightGeo.computeVertexNormals();
+    const sideburnLeftGeo = new THREE.LatheGeometry(
+      hairShellPts(0.008, 0.07, 10, 0.0042),
+      16,
+      -1.44,
+      0.36
+    );
+    sideburnLeftGeo.computeVertexNormals();
 
     // Sculpted organic palm ExtrudeGeometry (narrow at wrist, wider at knuckles, soft bevel)
     const palmShape = new THREE.Shape();
@@ -443,6 +439,7 @@ function useCharacterAssets() {
 
     // Shared materials
     const hairnetTex = createHairnetPleatTexture();
+    const hairBumpTex = createHairBumpTexture();
     const materials = {
       skin: new THREE.MeshPhysicalMaterial({
         color: '#E5B89B',
@@ -452,9 +449,11 @@ function useCharacterAssets() {
         sheenRoughness: 0.85,
       }),
       hairBase: new THREE.MeshStandardMaterial({
-        color: '#2E1E15',
-        roughness: 0.94,
+        color: '#3A2618',
+        roughness: 0.9,
         metalness: 0,
+        bumpMap: hairBumpTex,
+        bumpScale: 0.0012,
       }),
       eyebrow: new THREE.MeshStandardMaterial({
         color: '#3A2618',
@@ -556,10 +555,9 @@ function useCharacterAssets() {
       neckGeo,
       hairnetGeo,
       hairnetBandGeo,
-      fringeLocks,
+      fringeGeo,
       sideburnLeftGeo,
       sideburnRightGeo,
-      napeLocks,
       palmGeo,
       browGeo,
       earGeo,
@@ -661,21 +659,11 @@ function CharacterHead({ assets, y, tiltX = 0.14, turnY = 0, fullerHairBase = fa
         <sphereGeometry args={[0.098, 16, 14]} />
       </mesh>
 
-      {/* Visible layered hair peeking below the hairnet elastic band (#2E1E15 matte) */}
-      <group name="visible-hair-layers">
-        {/* Soft front fringe / bangs peeking over upper forehead (above eyebrows) */}
-        {assets.fringeLocks.map((geo, idx) => (
-          <mesh key={`fringe-${idx}`} geometry={geo} material={m.hairBase} castShadow />
-        ))}
-        {/* Marked elongated sideburns in front of both ears */}
+      {/* Smooth continuous hair (#3A2618 matte): short even fringe + short clean sideburns */}
+      <group name="visible-hair" scale={[0.98, 1.02, 1.04]}>
+        <mesh geometry={assets.fringeGeo} material={m.hairBase} castShadow />
         <mesh geometry={assets.sideburnLeftGeo} material={m.hairBase} castShadow />
         <mesh geometry={assets.sideburnRightGeo} material={m.hairBase} castShadow />
-        {/* Fuller layered nape hair across the back of the head & upper neck */}
-        <group scale={fullerHairBase ? [1.06, 1.15, 1.08] : [1.0, 1.0, 1.0]}>
-          {assets.napeLocks.map((geo, idx) => (
-            <mesh key={`nape-${idx}`} geometry={geo} material={m.hairBase} castShadow />
-          ))}
-        </group>
       </group>
 
       {/* Closer-fitting bouffant semi-translucent white sanitary hairnet */}
