@@ -29,7 +29,8 @@ function headRadiusAt(yy) {
 }
 
 function bandBaseY(a) {
-  return 0.092 - (1 - Math.cos(a)) * 0.052 + Math.abs(Math.sin(a)) * 0.012;
+  // Low sanitary coverage: forehead +0.072, right over ears +0.018, low over back/nape -0.078
+  return 0.072 - (1 - Math.cos(a)) * 0.075 + Math.abs(Math.sin(a)) * 0.021;
 }
 
 const smooth = (e0, e1, x) => {
@@ -37,17 +38,17 @@ const smooth = (e0, e1, x) => {
   return t * t * (3 - 2 * t);
 };
 
-// Smooth lower hairline: even fringe above eyebrows, clean sideburns, full coverage behind/above ears & nape
+// Trim lower hairline peeking neatly (~1.5 cm) below the low-covering sanitary hairnet
 function hairLowY(a) {
   const d = (Math.abs(a) * 180) / Math.PI;
-  const front = 0.055; // clean fringe right above eyebrows
-  const sideburn = -0.018; // neat sideburn right in front of ear, clear of mask
-  const behindEar = -0.024; // covers 100% of skin above/behind ear root while ear protrudes cleanly
-  const nape = -0.104; // full clean nape behind ears
+  const front = 0.058; // slim fringe edge right above eyebrows
+  const sideburn = -0.012; // short neat sideburn right in front of ear
+  const behindEar = -0.02; // hugs tightly behind ear root
+  const nape = -0.096; // slim neat nape rim just below the low hairnet band
   let y = front;
-  y += (sideburn - front) * smooth(36, 56, d);
+  y += (sideburn - front) * smooth(38, 58, d);
   y += (behindEar - sideburn) * smooth(74, 86, d);
-  y += (nape - behindEar) * smooth(96, 118, d);
+  y += (nape - behindEar) * smooth(96, 120, d);
   return y;
 }
 
@@ -226,15 +227,16 @@ function useCharacterAssets() {
       20
     );
 
-    // Clean bright white bouffant hairnet clamped cleanly to the elastic band
+    // Clean bright white bouffant hairnet reaching low over the nape and clamped cleanly to the elastic band
     const hairnetPts = [
-      new THREE.Vector2(0.102, -0.01),
-      new THREE.Vector2(0.114, 0.018),
-      new THREE.Vector2(0.122, 0.056),
-      new THREE.Vector2(0.122, 0.095),
-      new THREE.Vector2(0.108, 0.128),
-      new THREE.Vector2(0.076, 0.148),
-      new THREE.Vector2(0.036, 0.156),
+      new THREE.Vector2(0.088, -0.098),
+      new THREE.Vector2(0.104, -0.052),
+      new THREE.Vector2(0.114, -0.008),
+      new THREE.Vector2(0.12, 0.036),
+      new THREE.Vector2(0.122, 0.078),
+      new THREE.Vector2(0.112, 0.118),
+      new THREE.Vector2(0.082, 0.145),
+      new THREE.Vector2(0.038, 0.156),
       new THREE.Vector2(0.0, 0.158),
     ];
     const hairnetGeo = new THREE.LatheGeometry(hairnetPts, 36);
@@ -244,14 +246,14 @@ function useCharacterAssets() {
       const vy = hnPos.getY(i);
       const vz = hnPos.getZ(i);
       const ang = Math.atan2(vx, vz);
-      const puff = 1 + Math.sin(ang * 18) * 0.01 * Math.min(1, Math.max(0, (vy + 0.01) / 0.11));
-      const limit = bandBaseY(ang) + 0.002 - 0.014;
+      const puff = 1 + Math.sin(ang * 18) * 0.01 * Math.min(1, Math.max(0, (vy + 0.08) / 0.16));
+      const limit = bandBaseY(ang) + 0.002 - 0.018;
       let ny = vy;
       let k = puff;
       if (vy < limit) {
         ny = limit;
         const rr = Math.hypot(vx, vz) || 1;
-        const need = headRadiusAt(limit + 0.014) + 0.013;
+        const need = headRadiusAt(limit + 0.018) + 0.011;
         k = Math.max(puff, need / rr);
       }
       hnPos.setXYZ(i, vx * k, ny, vz * k);
