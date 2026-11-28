@@ -540,17 +540,17 @@ function useCharacterAssets() {
         metalness: 0,
       }),
       catchlight: new THREE.MeshBasicMaterial({ color: '#FFFFFF' }),
-      // Crisp bright white sanitary hairnet (never muddy/gray)
+      // Crisp white semi-translucent sanitary hairnet (dark-brown hair softly visible underneath)
       hairnet: new THREE.MeshPhysicalMaterial({
         color: '#FFFFFF',
         map: hairnetTex,
         bumpMap: hairnetTex,
-        bumpScale: 0.0012,
+        bumpScale: 0.0014,
         emissive: '#F5F7FA',
-        emissiveIntensity: 0.12,
+        emissiveIntensity: 0.08,
         transparent: true,
-        opacity: 0.9,
-        roughness: 0.86,
+        opacity: 0.72,
+        roughness: 0.88,
         metalness: 0,
         sheen: 0.16,
         side: THREE.DoubleSide,
@@ -715,13 +715,13 @@ function CleanStudioHead({ assets, y, tiltX = 0.14, turnY = 0, fullerHair = fals
         </group>
       ))}
 
-      {/* Subtle inner hair cap softly visible beneath the bright white hairnet */}
+      {/* Full dark-brown hair volume neatly contained underneath the semi-translucent white hairnet */}
       <mesh
         material={m.hair}
-        position={[0, 0.056, -0.012]}
-        scale={fullerHair ? [0.99, 0.99, 1.01] : [0.96, 0.98, 0.98]}
+        position={[0, 0.054, -0.012]}
+        scale={fullerHair ? [1.02, 0.96, 1.03] : [1.0, 0.95, 1.01]}
       >
-        <sphereGeometry args={[0.097, 16, 14]} />
+        <sphereGeometry args={[0.102, 18, 16]} />
       </mesh>
 
       {/* Continuous smooth matte dark-brown hair (fringe, sideburns & full nape tucked inside elastic band) */}
