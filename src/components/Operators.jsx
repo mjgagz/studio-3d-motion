@@ -243,18 +243,63 @@ function createOrganicSleeveGeometry(curve, radiusFn, tubularSegs = 28, radialSe
   return geo;
 }
 
-// Build a smooth organic human finger phalanx (slightly tapered cylinder with rounded ends)
-function createTaperedPhalanxGeometry(rBase, rTip, length) {
-  const pts = [
-    new THREE.Vector2(0.0, 0.0),
-    new THREE.Vector2(rBase * 0.82, -rBase * 0.25),
-    new THREE.Vector2(rBase, -rBase * 0.7),
-    new THREE.Vector2(rBase * 0.94, -length * 0.45),
-    new THREE.Vector2(rTip, -length + rTip * 0.75),
-    new THREE.Vector2(rTip * 0.78, -length + rTip * 0.2),
-    new THREE.Vector2(0.0, -length),
-  ];
-  return new THREE.LatheGeometry(pts, 12);
+// Build a SINGLE continuous, anatomically tapered human finger along an arched 3D curve
+// (elliptical cross-section, subtle knuckle swells, smooth rounded fingertip — zero sausage-link beads)
+function createOrganicFingerGeometry(curve, rBase, rTip, tubularSegs = 22, radialSegs = 14) {
+  const frames = curve.computeFrenetFrames(tubularSegs, false);
+  const positions = [];
+  const uvs = [];
+  const indices = [];
+
+  for (let i = 0; i <= tubularSegs; i++) {
+    const t = i / tubularSegs;
+    const center = curve.getPointAt(t);
+    const N = frames.normals[i];
+    const B = frames.binormals[i];
+
+    // Smooth human finger taper + subtle natural PIP/DIP joint contours + rounded hemispherical tip
+    let r = rBase + (rTip - rBase) * Math.pow(t, 0.85);
+    // Subtle anatomical joint fullness at ~0.38 and ~0.72
+    r *= 1 + Math.exp(-Math.pow((t - 0.38) / 0.08, 2)) * 0.045;
+    r *= 1 + Math.exp(-Math.pow((t - 0.72) / 0.07, 2)) * 0.03;
+    // Smooth rounded dome at fingertip (t > 0.88)
+    if (t > 0.88) {
+      const capT = (t - 0.88) / 0.12;
+      r *= Math.sqrt(Math.max(0.0001, 1 - capT * capT));
+    }
+
+    // Elliptical human finger cross-section (slightly wider side-to-side, slightly flatter palmar/dorsal)
+    const rN = r * 0.88;
+    const rB = r * 1.06;
+
+    for (let j = 0; j <= radialSegs; j++) {
+      const v = (j / radialSegs) * Math.PI * 2;
+      const sin = Math.sin(v);
+      const cos = -Math.cos(v);
+      const px = center.x + cos * rN * N.x + sin * rB * B.x;
+      const py = center.y + cos * rN * N.y + sin * rB * B.y;
+      const pz = center.z + cos * rN * N.z + sin * rB * B.z;
+      positions.push(px, py, pz);
+      uvs.push(t, j / radialSegs);
+    }
+  }
+
+  for (let i = 0; i < tubularSegs; i++) {
+    for (let j = 0; j < radialSegs; j++) {
+      const a = i * (radialSegs + 1) + j;
+      const b = (i + 1) * (radialSegs + 1) + j;
+      const c = (i + 1) * (radialSegs + 1) + (j + 1);
+      const d = i * (radialSegs + 1) + (j + 1);
+      indices.push(a, b, d, b, c, d);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
 }
 
 // Shared character geometries & calibrated studio PBR materials (built once for locked 60 FPS)
@@ -554,12 +599,36 @@ function useCharacterAssets() {
     });
     palmGeo.translate(0, 0, -0.006);
 
-    // Tapered organic finger phalanges (proximal, middle, distal fingertip)
-    const phalanxProxGeo = createTaperedPhalanxGeometry(0.0066, 0.0056, 0.021);
-    const phalanxMidGeo = createTaperedPhalanxGeometry(0.0055, 0.0047, 0.015);
-    const phalanxTipGeo = createTaperedPhalanxGeometry(0.0047, 0.0036, 0.012);
-    const thumbProxGeo = createTaperedPhalanxGeometry(0.008, 0.0068, 0.019);
-    const thumbTipGeo = createTaperedPhalanxGeometry(0.0066, 0.0048, 0.015);
+    // Continuous sculpted organic fingers curving DOWNWARD toward palm/keys/bags (local -Z maps to world -Y)
+    const makeContinuousFinger = (length, rBase, rTip, arch) => {
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, 0.005, 0.0),
+        new THREE.Vector3(0, -length * 0.36, -length * 0.06 * arch),
+        new THREE.Vector3(0, -length * 0.72, -length * 0.22 * arch),
+        new THREE.Vector3(0, -length * 0.94, -length * 0.4 * arch),
+        new THREE.Vector3(0, -length, -length * 0.47 * arch),
+      ]);
+      const geo = createOrganicFingerGeometry(curve, rBase, rTip, 20, 14);
+      const nailPos = curve.getPointAt(0.86);
+      const nailTan = curve.getTangentAt(0.86).normalize();
+      const nailQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), nailTan);
+      return { geo, nailPos, nailQuat, nailW: rTip * 1.4, nailL: length * 0.19, nailOff: rTip * 0.78 };
+    };
+
+    const fingersStanding = {
+      index: makeContinuousFinger(0.056, 0.0066, 0.0046, 0.65),
+      middle: makeContinuousFinger(0.062, 0.0069, 0.0048, 0.72),
+      ring: makeContinuousFinger(0.057, 0.0065, 0.0045, 0.78),
+      pinky: makeContinuousFinger(0.045, 0.0055, 0.0039, 0.84),
+      thumb: makeContinuousFinger(0.043, 0.0082, 0.0058, 0.52),
+    };
+    const fingersSeated = {
+      index: makeContinuousFinger(0.056, 0.0066, 0.0046, 0.92),
+      middle: makeContinuousFinger(0.062, 0.0069, 0.0048, 1.02),
+      ring: makeContinuousFinger(0.057, 0.0065, 0.0045, 1.08),
+      pinky: makeContinuousFinger(0.045, 0.0055, 0.0039, 1.12),
+      thumb: makeContinuousFinger(0.043, 0.0082, 0.0058, 0.62),
+    };
 
     const thighGeo = new THREE.LatheGeometry(
       [
@@ -599,13 +668,19 @@ function useCharacterAssets() {
     const hairBumpTex = createHairBumpTexture();
 
     const materials = {
-      // Unified warm natural matte skin across face, ears, neck & 5-finger hands
+      // Unified warm natural matte skin across face, ears, neck & human hands
       skin: new THREE.MeshPhysicalMaterial({
         color: '#E8BC9E',
         roughness: 0.66,
         metalness: 0,
         sheen: 0.14,
         sheenRoughness: 0.85,
+      }),
+      // Subtle natural fingernail tone
+      nail: new THREE.MeshStandardMaterial({
+        color: '#F3D2C1',
+        roughness: 0.36,
+        metalness: 0,
       }),
       // Matte dark chestnut brown hair (#3A2618) with subtle fine-strand relief
       hair: new THREE.MeshStandardMaterial({
@@ -741,11 +816,8 @@ function useCharacterAssets() {
       armsStanding,
       armsSeated,
       palmGeo,
-      phalanxProxGeo,
-      phalanxMidGeo,
-      phalanxTipGeo,
-      thumbProxGeo,
-      thumbTipGeo,
+      fingersStanding,
+      fingersSeated,
       thighGeo,
       calfGeo,
       soleGeo,
@@ -907,118 +979,82 @@ function ClosedHoodieTorso({ assets, slim = false }) {
   );
 }
 
-// Continuous organic hoodie arm + ribbed cuff + anatomical 3-joint human 5-finger hand
+// Continuous organic hoodie arm + ribbed cuff + continuous sculpted human 5-finger hand with subtle fingernails
 function ArticulatedArm({ assets, side = -1, pose = 'standing', slim = false }) {
   const { materials: m } = assets;
   const isSeated = pose === 'seated';
   const armSet = isSeated ? assets.armsSeated : assets.armsStanding;
   const arm = side === -1 ? armSet.left : armSet.right;
+  const fSet = isSeated ? assets.fingersSeated : assets.fingersStanding;
 
-  // Natural finger proportions & curl angles (typing arch when seated, bag-handling curve when standing)
-  const fingers = [
-    {
-      name: 'index',
-      x: -0.02,
-      y: -0.052,
-      scale: 0.96,
-      splay: -0.08,
-      c1: isSeated ? 0.34 : 0.24,
-      c2: isSeated ? 0.56 : 0.36,
-      c3: isSeated ? 0.42 : 0.28,
-    },
-    {
-      name: 'middle',
-      x: -0.0065,
-      y: -0.055,
-      scale: 1.05,
-      splay: -0.01,
-      c1: isSeated ? 0.38 : 0.28,
-      c2: isSeated ? 0.62 : 0.4,
-      c3: isSeated ? 0.46 : 0.32,
-    },
-    {
-      name: 'ring',
-      x: 0.007,
-      y: -0.053,
-      scale: 0.98,
-      splay: 0.05,
-      c1: isSeated ? 0.42 : 0.32,
-      c2: isSeated ? 0.64 : 0.44,
-      c3: isSeated ? 0.48 : 0.34,
-    },
-    {
-      name: 'pinky',
-      x: 0.02,
-      y: -0.049,
-      scale: 0.8,
-      splay: 0.12,
-      c1: isSeated ? 0.46 : 0.36,
-      c2: isSeated ? 0.66 : 0.48,
-      c3: isSeated ? 0.5 : 0.36,
-    },
+  const fingerSpecs = [
+    { key: 'index', data: fSet.index, x: -0.02, y: -0.052, splay: -0.09 },
+    { key: 'middle', data: fSet.middle, x: -0.0065, y: -0.055, splay: -0.015 },
+    { key: 'ring', data: fSet.ring, x: 0.007, y: -0.053, splay: 0.055 },
+    { key: 'pinky', data: fSet.pinky, x: 0.0195, y: -0.049, splay: 0.13 },
   ];
 
   return (
     <group scale={[slim ? 0.94 : 1, 1, 1]}>
-      {/* Single continuous organic fleece sleeve (zero shoulder horns or elbow seams) */}
+      {/* Single continuous organic fleece sleeve */}
       <mesh geometry={arm.sleeveGeo} material={m.hoodie} castShadow receiveShadow />
       {/* Seamless ribbed elastic wrist cuff */}
       <mesh geometry={arm.cuffGeo} material={m.hoodieRib} castShadow />
 
-      {/* Anatomical human 5-finger hand aligned smoothly to wrist direction */}
+      {/* Anatomical human 5-finger hand aligned smoothly to wrist direction (local +Z = dorsal top, local -Z = palm down) */}
       <group position={arm.wristPos} quaternion={arm.handQuat}>
-        {/* Fine wrist roll so palms face naturally downward over keys / inward over bags */}
-        <group rotation={[isSeated ? 0.36 : 0.18, side * (isSeated ? -0.18 : -0.32), 0]}>
+        <group rotation={[isSeated ? -0.18 : -0.14, side * (isSeated ? -0.18 : -0.26), 0]}>
           {/* Smooth tapered wrist entering the ribbed cuff */}
           <mesh material={m.skin} position={[0, 0.008, 0]} scale={[1.0, 1.0, 0.72]} castShadow>
-            <cylinderGeometry args={[0.022, 0.024, 0.028, 14]} />
+            <cylinderGeometry args={[0.021, 0.024, 0.028, 14]} />
           </mesh>
 
           {/* Organic beveled palm */}
           <mesh geometry={assets.palmGeo} material={m.skin} castShadow receiveShadow />
 
-          {/* Soft thenar muscle pad at thumb base (gives genuine human palm contour) */}
+          {/* Soft thenar muscle pad on true PALM underside (local -Z, never on top of hand) */}
           <mesh
             material={m.skin}
-            position={[-side * 0.017, -0.022, 0.007]}
+            position={[-side * 0.017, -0.022, -0.007]}
             scale={[0.85, 1.25, 0.65]}
             castShadow
           >
             <sphereGeometry args={[0.015, 12, 10]} />
           </mesh>
 
-          {/* Articulated 2-phalanx opposable thumb on inner palm side */}
+          {/* Continuous sculpted opposable thumb curving gently downward/inward + dorsal nail on +Z */}
           <group
-            position={[-side * 0.023, -0.022, 0.005]}
-            rotation={[isSeated ? 0.34 : 0.28, side * -0.42, -side * 0.62]}
+            position={[-side * 0.023, -0.024, -0.004]}
+            rotation={[isSeated ? -0.14 : -0.1, side * -0.35, -side * 0.56]}
           >
-            <mesh geometry={assets.thumbProxGeo} material={m.skin} castShadow />
-            <group position={[0, -0.017, 0]} rotation={[0.38, 0, side * 0.24]}>
-              <mesh geometry={assets.thumbTipGeo} material={m.skin} castShadow />
+            <mesh geometry={fSet.thumb.geo} material={m.skin} castShadow />
+            <group position={fSet.thumb.nailPos} quaternion={fSet.thumb.nailQuat}>
+              <mesh
+                material={m.nail}
+                position={[0, 0, fSet.thumb.nailOff]}
+                scale={[1, 1.22, 0.32]}
+              >
+                <sphereGeometry args={[fSet.thumb.nailW * 0.5, 8, 8]} />
+              </mesh>
             </group>
           </group>
 
-          {/* Four 3-phalanx human fingers with knuckle bridge & natural curvature */}
-          {fingers.map((f) => (
+          {/* Four continuous sculpted human fingers curving DOWNWARD + dorsal fingernails on top (+Z) */}
+          {fingerSpecs.map((f) => (
             <group
-              key={f.name}
-              position={[side * f.x, f.y, 0.001]}
-              rotation={[f.c1, 0, side * f.splay]}
-              scale={[f.scale, f.scale, f.scale]}
+              key={f.key}
+              position={[side * f.x, f.y, -0.001]}
+              rotation={[-0.08, 0, side * f.splay]}
             >
-              {/* Soft knuckle transition */}
-              <mesh material={m.skin} scale={[1.0, 0.9, 0.95]}>
-                <sphereGeometry args={[0.0068, 8, 8]} />
-              </mesh>
-              {/* Proximal phalanx */}
-              <mesh geometry={assets.phalanxProxGeo} material={m.skin} castShadow />
-              {/* Middle phalanx */}
-              <group position={[0, -0.019, 0]} rotation={[f.c2, 0, 0]}>
-                <mesh geometry={assets.phalanxMidGeo} material={m.skin} castShadow />
-                {/* Distal fingertip phalanx */}
-                <group position={[0, -0.0135, 0]} rotation={[f.c3, 0, 0]}>
-                  <mesh geometry={assets.phalanxTipGeo} material={m.skin} castShadow />
-                </group>
+              <mesh geometry={f.data.geo} material={m.skin} castShadow />
+              <group position={f.data.nailPos} quaternion={f.data.nailQuat}>
+                <mesh
+                  material={m.nail}
+                  position={[0, 0, f.data.nailOff]}
+                  scale={[1, 1.32, 0.3]}
+                >
+                  <sphereGeometry args={[f.data.nailW * 0.48, 8, 8]} />
+                </mesh>
               </group>
             </group>
           ))}
