@@ -37,24 +37,24 @@ const smooth = (e0, e1, x) => {
   return t * t * (3 - 2 * t);
 };
 
-// Smooth lower hairline: even fringe above eyebrows, clean sideburns, full coverage behind ears & nape
+// Smooth lower hairline: even fringe above eyebrows, clean sideburns, full coverage behind/above ears & nape
 function hairLowY(a) {
   const d = (Math.abs(a) * 180) / Math.PI;
-  const front = 0.058; // clean fringe above eyebrows
-  const sideburn = -0.006; // neat sideburn, clear of mask
-  const aboveEar = 0.02; // hugs closely over top of ear
-  const nape = -0.098; // full clean nape behind ears
+  const front = 0.055; // clean fringe right above eyebrows
+  const sideburn = -0.018; // neat sideburn right in front of ear, clear of mask
+  const behindEar = -0.024; // covers 100% of skin above/behind ear root while ear protrudes cleanly
+  const nape = -0.104; // full clean nape behind ears
   let y = front;
-  y += (sideburn - front) * smooth(40, 60, d);
-  y += (aboveEar - sideburn) * smooth(74, 84, d);
-  y += (nape - aboveEar) * smooth(96, 118, d);
+  y += (sideburn - front) * smooth(36, 56, d);
+  y += (behindEar - sideburn) * smooth(74, 86, d);
+  y += (nape - behindEar) * smooth(96, 118, d);
   return y;
 }
 
-// Continuous smooth dark-brown hair skirt tucked cleanly inside the white elastic band
+// Clean lower hair skirt from hairline up into the elastic band (pairs with the concentric inner hairnet dome)
 function createHairGeometry() {
   const cols = 120;
-  const rows = 12;
+  const rows = 14;
   const positions = [];
   const uvs = [];
   const indices = [];
@@ -63,12 +63,12 @@ function createHairGeometry() {
     const v = iy / rows;
     for (let ix = 0; ix <= cols; ix++) {
       const a = -Math.PI + (ix / cols) * Math.PI * 2;
-      const top = bandBaseY(a) + 0.016;
       const low = hairLowY(a);
+      const top = bandBaseY(a) + 0.025;
       const yy = low + (top - low) * v;
-      // Full volume below band, tapers smoothly inside the white elastic band so it never pokes through
-      const thick = (0.0025 + 0.0105 * smooth(0, 0.42, v)) * (1 - 0.78 * smooth(0.68, 1, v));
-      const r = headRadiusAt(yy) + thick;
+      const edgeTaper = smooth(0, 0.16, v);
+      const r = headRadiusAt(yy) + 0.002 + 0.0055 * edgeTaper;
+
       positions.push(Math.sin(a) * r * HEAD_SCALE[0], yy, Math.cos(a) * r * HEAD_SCALE[2]);
       uvs.push(ix / cols, v);
     }
@@ -258,13 +258,13 @@ function useCharacterAssets() {
     }
     hairnetGeo.computeVertexNormals();
 
-    // Ruffled crisp white elastic hairnet band
+    // Ruffled crisp white elastic hairnet band seated FLUSH against the hair cap (zero air gap)
     const bandPts = [];
     for (let i = 0; i < 64; i++) {
       const a = (i / 64) * Math.PI * 2;
-      const ruffle = Math.sin(a * 28) * 0.0026;
-      const y = bandBaseY(a) + Math.sin(a * 28) * 0.0016;
-      const r = headRadiusAt(y + 0.002) + 0.0115;
+      const ruffle = Math.sin(a * 28) * 0.0022;
+      const y = bandBaseY(a) + Math.sin(a * 28) * 0.0014;
+      const r = headRadiusAt(y + 0.002) + 0.0082;
       bandPts.push(
         new THREE.Vector3(
           Math.sin(a) * (r * HEAD_SCALE[0] + ruffle),
@@ -273,7 +273,7 @@ function useCharacterAssets() {
         )
       );
     }
-    const hairnetBandGeo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(bandPts, true), 72, 0.0082, 8, true);
+    const hairnetBandGeo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(bandPts, true), 72, 0.0076, 8, true);
 
     // Continuous smooth dark-brown hair
     const hairGeo = createHairGeometry();
@@ -715,29 +715,28 @@ function CleanStudioHead({ assets, y, tiltX = 0.14, turnY = 0, fullerHair = fals
         </group>
       ))}
 
-      {/* Full dark-brown hair volume neatly contained underneath the semi-translucent white hairnet */}
-      <mesh
-        material={m.hair}
-        position={[0, 0.054, -0.012]}
-        scale={fullerHair ? [1.02, 0.96, 1.03] : [1.0, 0.95, 1.01]}
-      >
-        <sphereGeometry args={[0.102, 18, 16]} />
-      </mesh>
-
-      {/* Continuous smooth matte dark-brown hair (fringe, sideburns & full nape tucked inside elastic band) */}
+      {/* Continuous lower dark-brown hair (fringe, sideburns, behind ears & full nape) */}
       <mesh
         geometry={assets.hairGeo}
         material={m.hair}
-        scale={fullerHair ? [1.02, 1.01, 1.02] : [1, 1, 1]}
+        scale={fullerHair ? [1.01, 1.0, 1.01] : [1, 1, 1]}
         castShadow
       />
 
-      {/* Crisp bright white bouffant sanitary hairnet */}
+      {/* Exact concentric inner dark-brown hair dome filling 100% of the white hairnet (zero air bubble, zero poke-through) */}
+      <mesh
+        geometry={assets.hairnetGeo}
+        material={m.hair}
+        position={[0, 0.015, -0.006]}
+        scale={fullerHair ? [0.955, 0.96, 0.975] : [0.938, 0.95, 0.958]}
+      />
+
+      {/* Crisp bright white semi-translucent bouffant sanitary hairnet */}
       <mesh
         geometry={assets.hairnetGeo}
         material={m.hairnet}
-        position={[0, 0.014, -0.008]}
-        scale={fullerHair ? [1.0, 1.0, 1.02] : [0.98, 0.98, 1.0]}
+        position={[0, 0.018, -0.006]}
+        scale={fullerHair ? [1.01, 1.02, 1.03] : [0.99, 1.01, 1.01]}
         castShadow
       />
 
