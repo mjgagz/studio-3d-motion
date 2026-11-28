@@ -660,60 +660,183 @@ function StainlessTable({ width, depth, height = 0.86 }) {
   );
 }
 
-// 3. EMBOLSADO: Full 4.0 m x 0.8 m stainless packing bench along right edge
-function EmbolsadoZone() {
-  const stationZs = [-1.32, -0.44, 0.44, 1.32];
-
+// Reusable flat 5S tape rectangle outline (for floor delimitation & tabletop shadow-board zones)
+function TapeOutline({ width, depth, thickness = 0.016, color = '#e5a910', position = [0, 0, 0] }) {
   return (
-    <group name="zone-embolsado" position={[1.6, 0, 0]}>
-      <StainlessTable width={0.78} depth={4.0} height={0.86} />
-
-      {/* 4 packing stations evenly distributed along the 4.0 m bench */}
-      {stationZs.map((z, idx) => (
-        <group key={idx} position={[0, 0.885, z]}>
-          <PolyBag position={[-0.12, 0, -0.08]} rotation={[0, 0.08, 0]} />
-          <PolyBag position={[-0.1, 0.015, 0.18]} rotation={[0, -0.15, 0]} />
-          <LabelRoll position={[0.16, 0.042, -0.22]} radius={0.052} height={0.08} stripeColor="#4b86b4" />
-          <LabelRoll position={[0.18, 0.042, 0.14]} radius={0.048} height={0.075} stripeColor="#14b8a6" />
-          {/* Printed label cards */}
-          <mesh position={[0.12, 0.005, -0.02]} receiveShadow>
-            <boxGeometry args={[0.14, 0.01, 0.18]} />
-            <meshStandardMaterial color="#f8fafc" roughness={0.6} />
-          </mesh>
-        </group>
-      ))}
+    <group position={position}>
+      <mesh position={[0, 0, -depth / 2 + thickness / 2]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[width, thickness]} />
+        <meshStandardMaterial color={color} roughness={0.58} metalness={0.02} />
+      </mesh>
+      <mesh position={[0, 0, depth / 2 - thickness / 2]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[width, thickness]} />
+        <meshStandardMaterial color={color} roughness={0.58} metalness={0.02} />
+      </mesh>
+      <mesh position={[-width / 2 + thickness / 2, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[thickness, depth - thickness * 2]} />
+        <meshStandardMaterial color={color} roughness={0.58} metalness={0.02} />
+      </mesh>
+      <mesh position={[width / 2 - thickness / 2, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[thickness, depth - thickness * 2]} />
+        <meshStandardMaterial color={color} roughness={0.58} metalness={0.02} />
+      </mesh>
     </group>
   );
 }
 
-// 4. SEEDLESS: 1.5 m wide stainless packing table along front edge (X: -0.3 to +1.2)
+// Ergonomic 5S anti-fatigue standing mat with safety-yellow perimeter
+function OperatorMat5S({ position, width = 0.44, depth = 0.62 }) {
+  return (
+    <group position={position}>
+      <RoundedBox args={[width, 0.01, depth]} radius={0.004} smoothness={2} position={[0, 0.005, 0]} receiveShadow>
+        <meshStandardMaterial color="#2b3441" roughness={0.85} metalness={0.04} />
+      </RoundedBox>
+      <TapeOutline width={width - 0.015} depth={depth - 0.015} thickness={0.016} color="#e5a910" position={[0, 0.011, 0]} />
+    </group>
+  );
+}
+
+// 3. EMBOLSADO: Full 4.0 m x 0.8 m 5S standardized stainless packing bench (4 cells E1–E4)
+function EmbolsadoZone() {
+  const stationZs = [-1.32, -0.44, 0.44, 1.32];
+  const operatorMatZs = [-1.28, -0.42, 0.44];
+
+  const railTex = useMemo(
+    () =>
+      createKanbanRailTexture([
+        { code: 'E1', label: 'EMBOLSADO', color: '#0d9488' },
+        { code: 'E2', label: 'EMBOLSADO', color: '#0d9488' },
+        { code: 'E3', label: 'EMBOLSADO', color: '#0d9488' },
+        { code: 'E4', label: 'CONTROL OK', color: '#16a34a' },
+      ]),
+    []
+  );
+
+  return (
+    <group name="zone-embolsado" position={[1.6, 0, 0]}>
+      {/* 5S safety-yellow floor perimeter tape around the 4.0 m bench */}
+      <TapeOutline width={0.86} depth={4.08} thickness={0.032} color="#e5a910" position={[0, 0.004, 0]} />
+
+      {/* 3 ergonomic 5S anti-fatigue standing mats aligned under the 3 operators */}
+      {operatorMatZs.map((z, idx) => (
+        <OperatorMat5S key={`emat-${idx}`} position={[-0.64, 0, z]} width={0.44} depth={0.62} />
+      ))}
+
+      <StainlessTable width={0.78} depth={4.0} height={0.86} />
+
+      {/* Aisle-facing Kanban identification rail along left edge (-X) of the 4.0 m bench */}
+      <mesh position={[-0.393, 0.86, 0]} rotation={[0, -Math.PI / 2, 0]}>
+        <planeGeometry args={[3.88, 0.042]} />
+        <meshStandardMaterial map={railTex} roughness={0.45} metalness={0.05} />
+      </mesh>
+
+      {/* Tabletop 5S cell dividers separating E1 | E2 | E3 | E4 */}
+      {[-0.88, 0.0, 0.88].map((zDiv, idx) => (
+        <mesh key={`ediv-${idx}`} position={[0, 0.883, zDiv]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.74, 0.016]} />
+          <meshStandardMaterial color="#e5a910" roughness={0.55} />
+        </mesh>
+      ))}
+
+      {/* 4 standardized 5S packing stations with shadow-board zones & fixed dispenser trays */}
+      {stationZs.map((z, idx) => (
+        <group key={idx} position={[0, 0.883, z]}>
+          {/* Shadow-board outline: active packing zone (teal) */}
+          <TapeOutline width={0.34} depth={0.62} thickness={0.012} color="#0d9488" position={[-0.14, 0, 0]} />
+          {/* Shadow-board outline: supplies & dispenser zone (blue) */}
+          <TapeOutline width={0.28} depth={0.62} thickness={0.012} color="#2563eb" position={[0.2, 0, 0]} />
+
+          {/* Neatly aligned zip poly bags in active packing zone (Seiton) */}
+          <PolyBag position={[-0.14, 0.004, -0.14]} rotation={[0, 0, 0]} />
+          <PolyBag position={[-0.14, 0.004, 0.14]} rotation={[0, 0, 0]} />
+
+          {/* Standardized dark-slate 5S organizer tray for rolls & printed label cards */}
+          <RoundedBox args={[0.22, 0.014, 0.54]} radius={0.004} smoothness={2} position={[0.2, 0.007, 0]} receiveShadow>
+            <meshStandardMaterial color="#25354d" roughness={0.6} metalness={0.08} />
+          </RoundedBox>
+          <LabelRoll position={[0.2, 0.052, -0.17]} radius={0.05} height={0.08} stripeColor="#4b86b4" />
+          <LabelRoll position={[0.2, 0.052, 0.17]} radius={0.048} height={0.075} stripeColor="#14b8a6" />
+          {/* Aligned printed label card stack in center slot */}
+          <mesh position={[0.2, 0.018, 0]} receiveShadow>
+            <boxGeometry args={[0.14, 0.012, 0.17]} />
+            <meshStandardMaterial color="#f8fafc" roughness={0.6} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Under-bench 5S modular supply bins aligned cleanly on the lower rail (Seiso) */}
+      <group position={[0, 0.31, -1.32]} rotation={[0, Math.PI, 0]}>
+        <StorageBin5S position={[0, 0, 0]} accentColor="#0d9488" />
+      </group>
+      <group position={[0, 0.31, 1.32]} rotation={[0, Math.PI, 0]}>
+        <StorageBin5S position={[0, 0, 0]} accentColor="#16a34a" />
+      </group>
+    </group>
+  );
+}
+
+// 4. SEEDLESS: 1.5 m wide 5S standardized packing table (3-zone linear flow: S1 Entrada -> S2 Empaque -> S3 Salida OK)
 function SeedlessZone() {
+  const railTex = useMemo(
+    () =>
+      createKanbanRailTexture([
+        { code: 'S1', label: 'ENTRADA', color: '#2563eb' },
+        { code: 'S2', label: 'EMPAQUE', color: '#0d9488' },
+        { code: 'S3', label: 'SALIDA OK', color: '#16a34a' },
+      ]),
+    []
+  );
+
   return (
     <group name="zone-seedless" position={[0.45, 0, 1.56]}>
+      {/* 5S safety-yellow floor perimeter tape around the 1.5 m Seedless table */}
+      <TapeOutline width={1.54} depth={0.72} thickness={0.032} color="#e5a910" position={[0, 0.004, 0]} />
+
+      {/* Ergonomic 5S anti-fatigue standing mat aligned under the Seedless operator */}
+      <OperatorMat5S position={[0, 0, -0.56]} width={0.62} depth={0.42} />
+
       <StainlessTable width={1.46} depth={0.64} height={0.84} />
 
-      {/* Packed puffy bags + flat zip bags + label sheet stack */}
-      <group position={[0, 0.865, 0]}>
-        <PolyBag position={[-0.46, 0.05, -0.04]} rotation={[0, 0.3, 0]} puffy />
-        <PolyBag position={[-0.22, 0.045, 0.12]} rotation={[0, -0.2, 0]} scale={0.88} puffy />
-        <PolyBag position={[0.02, 0.005, -0.06]} rotation={[0, 0.05, 0]} />
-        <PolyBag position={[0.36, 0.05, 0.04]} rotation={[0, -0.35, 0]} puffy />
+      {/* Front-facing Kanban workflow rail (+Z edge) */}
+      <mesh position={[0, 0.84, 0.323]}>
+        <planeGeometry args={[1.4, 0.042]} />
+        <meshStandardMaterial map={railTex} roughness={0.45} metalness={0.05} />
+      </mesh>
 
-        {/* Green-striped label sheet stack */}
-        <mesh position={[0.06, 0.008, 0.15]} receiveShadow>
-          <boxGeometry args={[0.16, 0.016, 0.18]} />
+      {/* Tabletop 3-zone 5S shadow-board flow (y=0.863) */}
+      <group position={[0, 0.863, 0]}>
+        {/* S1 ENTRADA (Left, blue outline): neat flat bags + label sheet holder */}
+        <TapeOutline width={0.42} depth={0.52} thickness={0.012} color="#2563eb" position={[-0.46, 0, 0]} />
+        <RoundedBox args={[0.19, 0.014, 0.22]} radius={0.004} smoothness={2} position={[-0.53, 0.007, -0.09]} receiveShadow>
+          <meshStandardMaterial color="#25354d" roughness={0.6} />
+        </RoundedBox>
+        <mesh position={[-0.53, 0.018, -0.09]} receiveShadow>
+          <boxGeometry args={[0.15, 0.014, 0.17]} />
           <meshStandardMaterial color="#f8fafc" roughness={0.55} />
         </mesh>
-        <mesh position={[0.06, 0.017, 0.15]}>
-          <boxGeometry args={[0.12, 0.002, 0.14]} />
+        <mesh position={[-0.53, 0.026, -0.09]}>
+          <boxGeometry args={[0.11, 0.002, 0.13]} />
           <meshStandardMaterial color="#10b981" roughness={0.5} />
         </mesh>
+        <PolyBag position={[-0.36, 0.004, 0.06]} rotation={[0, 0, 0]} />
 
-        {/* White tray/stack on far right */}
-        <mesh position={[0.56, 0.018, -0.06]} castShadow receiveShadow>
-          <boxGeometry args={[0.18, 0.036, 0.24]} />
-          <meshStandardMaterial color="#f1f5f9" roughness={0.55} />
-        </mesh>
+        {/* S2 EMPAQUE (Center, teal outline): active work cell directly under operator's hands */}
+        <TapeOutline width={0.44} depth={0.52} thickness={0.012} color="#0d9488" position={[0, 0, 0]} />
+        <PolyBag position={[0, 0.004, -0.05]} rotation={[0, 0, 0]} />
+        <LabelRoll position={[0.14, 0.042, 0.15]} radius={0.046} height={0.075} stripeColor="#14b8a6" />
+
+        {/* S3 SALIDA OK (Right, green outline): standardized finished-product tray with 2 aligned packed bags */}
+        <TapeOutline width={0.44} depth={0.52} thickness={0.012} color="#16a34a" position={[0.46, 0, 0]} />
+        <RoundedBox args={[0.38, 0.022, 0.46]} radius={0.008} smoothness={2} position={[0.46, 0.011, 0]} castShadow receiveShadow>
+          <meshStandardMaterial color="#e2e8f0" roughness={0.5} />
+        </RoundedBox>
+        <PolyBag position={[0.46, 0.068, -0.11]} rotation={[0, 0, 0]} scale={0.86} puffy />
+        <PolyBag position={[0.46, 0.068, 0.11]} rotation={[0, 0, 0]} scale={0.86} puffy />
+      </group>
+
+      {/* Under-table 5S reserve bin neatly aligned (Seiso — spotless floor) */}
+      <group position={[-0.38, 0.31, 0]} rotation={[0, -Math.PI / 2, 0]}>
+        <StorageBin5S position={[0, 0, 0]} accentColor="#16a34a" />
       </group>
     </group>
   );
