@@ -1,4 +1,146 @@
+import { useMemo } from 'react';
+import * as THREE from 'three';
 import { RoundedBox } from '@react-three/drei';
+
+// Procedural crisp Kanban shelf-edge rail texture (4 color-coded slots per shelf)
+function createKanbanRailTexture(slots) {
+  if (typeof document === 'undefined') return null;
+  const w = 1024;
+  const h = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+
+  // Clean anodized dark-slate label rail background
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(0, 0, w, h);
+
+  const slotW = w / slots.length;
+  slots.forEach((slot, idx) => {
+    const x0 = idx * slotW + 14;
+    const cardW = slotW - 28;
+
+    // White Kanban card holder
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(x0, 10, cardW, h - 20);
+
+    // Left color-coded SKU band
+    ctx.fillStyle = slot.color;
+    ctx.fillRect(x0, 10, 26, h - 20);
+
+    // Location code (e.g. B1)
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 26px Inter, Segoe UI, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(slot.code, x0 + 36, h / 2 + 1);
+
+    // Short label text
+    ctx.fillStyle = '#475569';
+    ctx.font = '600 18px Inter, Segoe UI, sans-serif';
+    ctx.fillText(slot.label, x0 + 92, h / 2 + 1);
+
+    // Green 5S OK status dot on right
+    ctx.fillStyle = '#10b981';
+    ctx.beginPath();
+    ctx.arc(x0 + cardW - 18, h / 2, 7, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 16;
+  return tex;
+}
+
+// Procedural crisp Japanese 5S Visual Management Board texture
+function create5SBoardTexture() {
+  if (typeof document === 'undefined') return null;
+  const w = 512;
+  const h = 576;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+
+  // Clean matte white board
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, w, h);
+
+  // Header bar (disciplined industrial navy)
+  ctx.fillStyle = '#1e3a5f';
+  ctx.fillRect(0, 0, w, 92);
+
+  // Safety-yellow 5S accent stripe
+  ctx.fillStyle = '#eab308';
+  ctx.fillRect(0, 84, w, 8);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 30px Inter, Segoe UI, sans-serif';
+  ctx.fillText('ESTÁNDAR 5S', 28, 44);
+  ctx.fillStyle = '#cbd5e1';
+  ctx.font = '500 18px Inter, Segoe UI, sans-serif';
+  ctx.fillText('ZONA ESTANTE · KANBAN VISUAL', 28, 70);
+
+  const pillars = [
+    { num: '1S', jp: 'SEIRI', es: 'Clasificar · Solo necesario', color: '#2563eb' },
+    { num: '2S', jp: 'SEITON', es: 'Ordenar · Carriles A1–D4', color: '#0d9488' },
+    { num: '3S', jp: 'SEISO', es: 'Limpiar · Piso libre 100%', color: '#16a34a' },
+    { num: '4S', jp: 'SEIKETSU', es: 'Estandarizar · Código color', color: '#d97706' },
+    { num: '5S', jp: 'SHITSUKE', es: 'Disciplina · Auditoría OK', color: '#7c3aed' },
+  ];
+
+  pillars.forEach((p, idx) => {
+    const y = 114 + idx * 76;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(24, y, w - 48, 62);
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(24, y, w - 48, 62);
+
+    // Pillar badge
+    ctx.fillStyle = p.color;
+    ctx.fillRect(24, y, 56, 62);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px Inter, Segoe UI, sans-serif';
+    ctx.fillText(p.num, 38, y + 38);
+
+    // Japanese + Spanish concise copy
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 20px Inter, Segoe UI, sans-serif';
+    ctx.fillText(p.jp, 96, y + 27);
+    ctx.fillStyle = '#475569';
+    ctx.font = '500 16px Inter, Segoe UI, sans-serif';
+    ctx.fillText(p.es, 96, y + 50);
+
+    // Green audit checkmark pill
+    ctx.fillStyle = '#dcfce7';
+    ctx.fillRect(w - 92, y + 17, 54, 28);
+    ctx.fillStyle = '#15803d';
+    ctx.font = 'bold 16px Inter, Segoe UI, sans-serif';
+    ctx.fillText('OK', w - 77, y + 37);
+  });
+
+  // Footer Min/Max visual gauge
+  ctx.fillStyle = '#f1f5f9';
+  ctx.fillRect(24, 502, w - 48, 50);
+  ctx.fillStyle = '#334155';
+  ctx.font = 'bold 16px Inter, Segoe UI, sans-serif';
+  ctx.fillText('STOCK KANBAN', 40, 533);
+
+  // Min / Target / Max visual bars
+  ctx.fillStyle = '#eab308';
+  ctx.fillRect(195, 518, 64, 18);
+  ctx.fillStyle = '#10b981';
+  ctx.fillRect(263, 518, 138, 18);
+  ctx.fillStyle = '#cbd5e1';
+  ctx.fillRect(405, 518, 65, 18);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 16;
+  return tex;
+}
 
 // Reusable stainless steel material props
 const STEEL = {
@@ -129,48 +271,198 @@ function ShelvingUnit({ position }) {
   );
 }
 
+// Modular 5S industrial storage bin with front Kanban label holder
+function StorageBin5S({ position, accentColor = '#2563eb' }) {
+  return (
+    <group position={position}>
+      {/* Clean matte light-slate tote body */}
+      <RoundedBox args={[0.42, 0.22, 0.44]} radius={0.015} smoothness={2} castShadow receiveShadow>
+        <meshStandardMaterial color="#e2e7ef" roughness={0.55} metalness={0.06} />
+      </RoundedBox>
+      {/* Top dark-navy standardized rim */}
+      <RoundedBox args={[0.435, 0.026, 0.455]} radius={0.008} smoothness={2} position={[0, 0.105, 0]} castShadow>
+        <meshStandardMaterial color="#25354d" roughness={0.5} metalness={0.08} />
+      </RoundedBox>
+      {/* Front aisle-facing Kanban card holder */}
+      <mesh position={[0.213, 0.01, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[0.2, 0.085]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.6} />
+      </mesh>
+      <mesh position={[0.215, 0.01, -0.072]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[0.042, 0.085]} />
+        <meshStandardMaterial color={accentColor} roughness={0.5} />
+      </mesh>
+    </group>
+  );
+}
+
+// Cardboard box with front 5S Kanban identification label facing the aisle (+X)
+function LabeledCarton5S({ position, size = [0.42, 0.26, 0.44], open = false, accentColor = '#2563eb' }) {
+  return (
+    <group position={position}>
+      <CardboardBox position={[0, 0, 0]} size={size} open={open} />
+      {/* Front Kanban ID label on aisle-facing face (+X) */}
+      <mesh position={[size[0] / 2 + 0.002, 0.01, 0]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[0.17, 0.08]} />
+        <meshStandardMaterial color="#f8fafc" roughness={0.65} />
+      </mesh>
+      <mesh position={[size[0] / 2 + 0.003, 0.01, -0.064]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[0.036, 0.08]} />
+        <meshStandardMaterial color={accentColor} roughness={0.55} />
+      </mesh>
+    </group>
+  );
+}
+
 function EstanteZone() {
-  const rollColors = ['#e6eaf0', '#7c6bb3', '#4b86b4', '#e59a4a', '#5ea89b'];
+  // Procedural 5S textures created once
+  const textures = useMemo(() => ({
+    board: create5SBoardTexture(),
+    railA: createKanbanRailTexture([
+      { code: 'A1', label: 'CAJAS', color: '#2563eb' },
+      { code: 'A2', label: 'CAJAS', color: '#2563eb' },
+      { code: 'A3', label: 'BOLSAS', color: '#0d9488' },
+      { code: 'A4', label: 'BOLSAS', color: '#0d9488' },
+    ]),
+    railB: createKanbanRailTexture([
+      { code: 'B1', label: 'AZUL', color: '#4b86b4' },
+      { code: 'B2', label: 'TEAL', color: '#5ea89b' },
+      { code: 'B3', label: 'MORADO', color: '#7c6bb3' },
+      { code: 'B4', label: 'NARANJA', color: '#e59a4a' },
+    ]),
+    railC: createKanbanRailTexture([
+      { code: 'C1', label: 'KIT-1', color: '#4b86b4' },
+      { code: 'C2', label: 'KIT-2', color: '#5ea89b' },
+      { code: 'C3', label: 'KIT-3', color: '#7c6bb3' },
+      { code: 'C4', label: 'KIT-4', color: '#e59a4a' },
+    ]),
+    railD: createKanbanRailTexture([
+      { code: 'D1', label: 'RESERVA', color: '#475569' },
+      { code: 'D2', label: 'RESERVA', color: '#475569' },
+      { code: 'D3', label: 'RESERVA', color: '#475569' },
+      { code: 'D4', label: 'RESERVA', color: '#475569' },
+    ]),
+  }), []);
+
+  // 4 strictly segregated color-coded lanes ordered left-to-right from aisle view (+Z -> -Z) matching B1–B4 rail
+  const lanes = [
+    { zCenter: 0.84, color: '#4b86b4' },
+    { zCenter: 0.28, color: '#5ea89b' },
+    { zCenter: -0.28, color: '#7c6bb3' },
+    { zCenter: -0.84, color: '#e59a4a' },
+  ];
+
+  // Uniform slot Z positions ordered left-to-right from aisle view (+Z -> -Z) matching A1–A4 / C1–C4 / D1–D4
+  const slotZs = [0.84, 0.28, -0.28, -0.84];
 
   return (
     <group name="zone-estante" position={[-1.68, 0, -0.66]}>
+      {/* 5S Floor Delimitation Tape (Seiton / Seiketsu) — crisp safety-yellow perimeter */}
+      <group position={[0.04, 0.004, 0]}>
+        {/* Aisle-side front tape */}
+        <mesh position={[0.34, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.036, 2.42]} />
+          <meshStandardMaterial color="#e5a910" roughness={0.62} metalness={0.02} />
+        </mesh>
+        {/* Rear-side tape */}
+        <mesh position={[-0.34, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.036, 2.42]} />
+          <meshStandardMaterial color="#e5a910" roughness={0.62} metalness={0.02} />
+        </mesh>
+        {/* North end tape */}
+        <mesh position={[0, 0, -1.192]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.716, 0.036]} />
+          <meshStandardMaterial color="#e5a910" roughness={0.62} metalness={0.02} />
+        </mesh>
+        {/* South end tape */}
+        <mesh position={[0, 0, 1.192]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.716, 0.036]} />
+          <meshStandardMaterial color="#e5a910" roughness={0.62} metalness={0.02} />
+        </mesh>
+      </group>
+
       {/* Rear shelving bay */}
       <ShelvingUnit position={[0, 0, -0.58]} />
       {/* Front shelving bay */}
       <ShelvingUnit position={[0, 0, 0.58]} />
 
-      {/* Top shelf: cardboard shipping boxes + open bag boxes (matches 01, 02, 03) */}
-      <CardboardBox position={[0, 1.78, -0.85]} size={[0.42, 0.28, 0.44]} />
-      <CardboardBox position={[0, 1.78, -0.34]} size={[0.42, 0.28, 0.44]} />
-      <CardboardBox position={[0, 1.76, 0.3]} size={[0.42, 0.24, 0.42]} open />
-      <CardboardBox position={[0, 1.76, 0.82]} size={[0.42, 0.24, 0.42]} open />
+      {/* Crisp Kanban identification rail strips along aisle-facing front edge (+X) of every shelf */}
+      {[
+        { y: 1.62, tex: textures.railA },
+        { y: 1.14, tex: textures.railB },
+        { y: 0.64, tex: textures.railC },
+        { y: 0.16, tex: textures.railD },
+      ].map((rail, idx) => (
+        <mesh key={`rail-${idx}`} position={[0.283, rail.y, 0]} rotation={[0, Math.PI / 2, 0]}>
+          <planeGeometry args={[2.22, 0.044]} />
+          <meshStandardMaterial map={rail.tex} roughness={0.45} metalness={0.05} />
+        </mesh>
+      ))}
 
-      {/* Shelf 3 (y=1.14): Organized rows of label rolls (inspired by 05.jpg) */}
-      {Array.from({ length: 10 }).map((_, i) => {
-        const z = -1.02 + i * 0.22;
-        const stripe = rollColors[i % rollColors.length];
-        return (
-          <group key={`s3-${i}`}>
-            <LabelRoll position={[-0.12, 1.21, z]} radius={0.056} height={0.11} stripeColor={stripe} />
-            <LabelRoll position={[0.1, 1.21, z]} radius={0.056} height={0.11} stripeColor={stripe} />
-          </group>
-        );
-      })}
+      {/* Level A (y=1.62): Uniformly aligned cartons & open bag totes with Kanban IDs (A1–A4) */}
+      <LabeledCarton5S position={[0, 1.77, slotZs[0]]} size={[0.42, 0.26, 0.44]} accentColor="#2563eb" />
+      <LabeledCarton5S position={[0, 1.77, slotZs[1]]} size={[0.42, 0.26, 0.44]} accentColor="#2563eb" />
+      <LabeledCarton5S position={[0, 1.76, slotZs[2]]} size={[0.42, 0.24, 0.44]} open accentColor="#0d9488" />
+      <LabeledCarton5S position={[0, 1.76, slotZs[3]]} size={[0.42, 0.24, 0.44]} open accentColor="#0d9488" />
 
-      {/* Shelf 2 (y=0.64): More label rolls & boxed stock */}
-      {Array.from({ length: 5 }).map((_, i) => (
-        <group key={`s2-${i}`}>
-          <LabelRoll position={[-0.11, 0.71, -0.95 + i * 0.22]} radius={0.058} height={0.11} color="#f3f4f6" stripeColor="#4b86b4" />
-          <LabelRoll position={[0.11, 0.71, -0.95 + i * 0.22]} radius={0.058} height={0.11} color="#f3f4f6" stripeColor="#7c6bb3" />
+      {/* Level B (y=1.14): 4 Color-coded label-roll lanes with physical metal dividers (B1–B4) */}
+      {lanes.map((lane, lIdx) => (
+        <group key={`lane-${lIdx}`}>
+          {/* 2x2 aligned grid of same-color label rolls */}
+          {[-0.12, 0.11].map((rx, xi) =>
+            [-0.11, 0.11].map((rz, zi) => (
+              <LabelRoll
+                key={`r-${xi}-${zi}`}
+                position={[rx, 1.21, lane.zCenter + rz]}
+                radius={0.054}
+                height={0.11}
+                stripeColor={lane.color}
+              />
+            ))
+          )}
+          {/* Subtle Min/Max green indicator stripe on shelf surface */}
+          <mesh position={[0.23, 1.156, lane.zCenter]} rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[0.024, 0.44]} />
+            <meshStandardMaterial color={lane.color} roughness={0.5} />
+          </mesh>
         </group>
       ))}
-      <CardboardBox position={[0, 0.79, 0.42]} size={[0.4, 0.26, 0.46]} />
-      <CardboardBox position={[0, 0.79, 0.92]} size={[0.4, 0.26, 0.4]} />
+      {/* Physical lane dividers separating B1 | B2 | B3 | B4 */}
+      {[-0.56, 0.0, 0.56].map((zDiv, idx) => (
+        <mesh key={`div-${idx}`} position={[0, 1.21, zDiv]} castShadow>
+          <boxGeometry args={[0.52, 0.11, 0.01]} />
+          <meshStandardMaterial color="#64748b" roughness={0.42} metalness={0.55} />
+        </mesh>
+      ))}
 
-      {/* Bottom shelf (y=0.16): Heavy supply cartons */}
-      <CardboardBox position={[0, 0.31, -0.78]} size={[0.44, 0.27, 0.5]} />
-      <CardboardBox position={[0, 0.31, -0.22]} size={[0.44, 0.27, 0.48]} />
-      <CardboardBox position={[0, 0.31, 0.62]} size={[0.44, 0.27, 0.52]} />
+      {/* Level C (y=0.64): 4 standardized modular 5S storage bins with front Kanban cards (C1–C4) */}
+      <StorageBin5S position={[0, 0.765, slotZs[0]]} accentColor="#4b86b4" />
+      <StorageBin5S position={[0, 0.765, slotZs[1]]} accentColor="#5ea89b" />
+      <StorageBin5S position={[0, 0.765, slotZs[2]]} accentColor="#7c6bb3" />
+      <StorageBin5S position={[0, 0.765, slotZs[3]]} accentColor="#e59a4a" />
+
+      {/* Level D (y=0.16): 4 aligned reserve cartons with Kanban labels (D1–D4), spotless floor below (Seiso) */}
+      {slotZs.map((z, idx) => (
+        <LabeledCarton5S
+          key={`d-${idx}`}
+          position={[0, 0.305, z]}
+          size={[0.44, 0.26, 0.45]}
+          accentColor="#475569"
+        />
+      ))}
+
+      {/* 5S Visual Management Board angled on south-front post so it is legible from both Camera 1 and Camera 3 */}
+      <group position={[0.14, 1.16, 1.18]} rotation={[0, 0.58, 0]}>
+        {/* Brushed aluminum frame */}
+        <RoundedBox args={[0.48, 0.54, 0.022]} radius={0.008} smoothness={2} castShadow>
+          <meshStandardMaterial color="#334155" roughness={0.42} metalness={0.55} />
+        </RoundedBox>
+        {/* High-res 5S visual standard chart */}
+        <mesh position={[0, 0, 0.013]}>
+          <planeGeometry args={[0.44, 0.5]} />
+          <meshStandardMaterial map={textures.board} roughness={0.42} metalness={0.04} />
+        </mesh>
+      </group>
     </group>
   );
 }
