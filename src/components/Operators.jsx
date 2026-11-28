@@ -198,6 +198,65 @@ function createSurgicalMaskGeometry() {
   return geom;
 }
 
+// Build a single continuous variable-radius organic sleeve along a 3D CatmullRomCurve3
+// (eliminates shoulder horns, elbow ball-joints, and sleeve-to-cuff seams completely)
+function createOrganicSleeveGeometry(curve, radiusFn, tubularSegs = 28, radialSegs = 18) {
+  const frames = curve.computeFrenetFrames(tubularSegs, false);
+  const positions = [];
+  const uvs = [];
+  const indices = [];
+
+  for (let i = 0; i <= tubularSegs; i++) {
+    const t = i / tubularSegs;
+    const center = curve.getPointAt(t);
+    const N = frames.normals[i];
+    const B = frames.binormals[i];
+    const r = radiusFn(t);
+
+    for (let j = 0; j <= radialSegs; j++) {
+      const v = (j / radialSegs) * Math.PI * 2;
+      const sin = Math.sin(v);
+      const cos = -Math.cos(v);
+      const px = center.x + r * (cos * N.x + sin * B.x);
+      const py = center.y + r * (cos * N.y + sin * B.y);
+      const pz = center.z + r * (cos * N.z + sin * B.z);
+      positions.push(px, py, pz);
+      uvs.push(t, j / radialSegs);
+    }
+  }
+
+  for (let i = 0; i < tubularSegs; i++) {
+    for (let j = 0; j < radialSegs; j++) {
+      const a = i * (radialSegs + 1) + j;
+      const b = (i + 1) * (radialSegs + 1) + j;
+      const c = (i + 1) * (radialSegs + 1) + (j + 1);
+      const d = i * (radialSegs + 1) + (j + 1);
+      indices.push(a, b, d, b, c, d);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// Build a smooth organic human finger phalanx (slightly tapered cylinder with rounded ends)
+function createTaperedPhalanxGeometry(rBase, rTip, length) {
+  const pts = [
+    new THREE.Vector2(0.0, 0.0),
+    new THREE.Vector2(rBase * 0.82, -rBase * 0.25),
+    new THREE.Vector2(rBase, -rBase * 0.7),
+    new THREE.Vector2(rBase * 0.94, -length * 0.45),
+    new THREE.Vector2(rTip, -length + rTip * 0.75),
+    new THREE.Vector2(rTip * 0.78, -length + rTip * 0.2),
+    new THREE.Vector2(0.0, -length),
+  ];
+  return new THREE.LatheGeometry(pts, 12);
+}
+
 // Shared character geometries & calibrated studio PBR materials (built once for locked 60 FPS)
 function useCharacterAssets() {
   return useMemo(() => {
@@ -329,18 +388,18 @@ function useCharacterAssets() {
     const earLoopLeftGeo = makeEarLoop(-1);
     const earLoopRightGeo = makeEarLoop(1);
 
-    // Closed matte navy fleece hoodie torso + smooth sloped shoulders + mock-neck collar
+    // Closed matte navy fleece hoodie torso + natural softly sloped shoulders + mock-neck collar
     const torsoGeo = new THREE.LatheGeometry(
       [
         new THREE.Vector2(0.0, 0.0),
         new THREE.Vector2(0.156, 0.004),
         new THREE.Vector2(0.162, 0.048),
-        new THREE.Vector2(0.172, 0.075),
-        new THREE.Vector2(0.168, 0.17),
-        new THREE.Vector2(0.178, 0.295),
-        new THREE.Vector2(0.172, 0.35),
-        new THREE.Vector2(0.154, 0.388),
-        new THREE.Vector2(0.124, 0.418),
+        new THREE.Vector2(0.17, 0.08),
+        new THREE.Vector2(0.166, 0.175),
+        new THREE.Vector2(0.172, 0.29),
+        new THREE.Vector2(0.164, 0.345),
+        new THREE.Vector2(0.144, 0.386),
+        new THREE.Vector2(0.116, 0.418),
         new THREE.Vector2(0.084, 0.442),
         new THREE.Vector2(0.068, 0.495),
         new THREE.Vector2(0.052, 0.498),
@@ -360,16 +419,16 @@ function useCharacterAssets() {
 
     const zipperGeo = new THREE.TubeGeometry(
       new THREE.CatmullRomCurve3([
-        new THREE.Vector3(0, 0.012, 0.107),
-        new THREE.Vector3(0, 0.08, 0.114),
-        new THREE.Vector3(0, 0.2, 0.114),
-        new THREE.Vector3(0, 0.33, 0.123),
-        new THREE.Vector3(0, 0.415, 0.105),
-        new THREE.Vector3(0, 0.452, 0.058),
-        new THREE.Vector3(0, 0.492, 0.046),
+        new THREE.Vector3(0, 0.012, 0.104),
+        new THREE.Vector3(0, 0.08, 0.11),
+        new THREE.Vector3(0, 0.2, 0.108),
+        new THREE.Vector3(0, 0.32, 0.111),
+        new THREE.Vector3(0, 0.4, 0.092),
+        new THREE.Vector3(0, 0.448, 0.056),
+        new THREE.Vector3(0, 0.492, 0.045),
       ]),
       22,
-      0.0038,
+      0.0036,
       6,
       false
     );
@@ -377,13 +436,13 @@ function useCharacterAssets() {
     const makeDrawstring = (side) =>
       new THREE.TubeGeometry(
         new THREE.CatmullRomCurve3([
-          new THREE.Vector3(side * 0.028, 0.46, 0.064),
-          new THREE.Vector3(side * 0.036, 0.41, 0.11),
-          new THREE.Vector3(side * 0.038, 0.34, 0.126),
-          new THREE.Vector3(side * 0.037, 0.27, 0.124),
+          new THREE.Vector3(side * 0.026, 0.456, 0.058),
+          new THREE.Vector3(side * 0.034, 0.405, 0.096),
+          new THREE.Vector3(side * 0.036, 0.335, 0.112),
+          new THREE.Vector3(side * 0.035, 0.27, 0.112),
         ]),
         16,
-        0.0038,
+        0.0035,
         6,
         false
       );
@@ -424,47 +483,83 @@ function useCharacterAssets() {
     const pocketLeftGeo = makePocketGeo(-1);
     const pocketRightGeo = makePocketGeo(1);
 
-    const upperSleeveGeo = new THREE.LatheGeometry(
-      [
-        new THREE.Vector2(0.048, -0.12),
-        new THREE.Vector2(0.054, 0.0),
-        new THREE.Vector2(0.06, 0.11),
-        new THREE.Vector2(0.054, 0.13),
-      ],
-      18
-    );
-    const forearmSleeveGeo = new THREE.LatheGeometry(
-      [
-        new THREE.Vector2(0.036, -0.095),
-        new THREE.Vector2(0.043, -0.015),
-        new THREE.Vector2(0.047, 0.095),
-        new THREE.Vector2(0.043, 0.11),
-      ],
-      18
-    );
-    const cuffGeo = new THREE.LatheGeometry(
-      [
-        new THREE.Vector2(0.031, -0.022),
-        new THREE.Vector2(0.035, 0.0),
-        new THREE.Vector2(0.0385, 0.022),
-      ],
-      16
-    );
+    // Continuous organic sleeves + ribbed cuffs (deeply seated into torso shoulders, hands calibrated above desks/tables)
+    const makeArmSet = (side, isSeated) => {
+      const s = side;
+      const pts = isSeated
+        ? [
+            new THREE.Vector3(s * 0.086, 0.362, -0.005), // rooted deeply inside torso shoulder (zero armpit gap)
+            new THREE.Vector3(s * 0.142, 0.346, 0.014),  // sleek natural deltoid (no shoulder-pad bulge)
+            new THREE.Vector3(s * 0.168, 0.258, 0.088),  // upper arm angling forward
+            new THREE.Vector3(s * 0.164, 0.238, 0.182),  // relaxed bent elbow above chair/desk height
+            new THREE.Vector3(s * 0.138, 0.285, 0.292),  // forearm reaching cleanly above desktop
+            new THREE.Vector3(s * 0.112, 0.312, 0.388),  // wrist at world Y ~0.83m (fingers hover right over 0.78m keys)
+          ]
+        : [
+            new THREE.Vector3(s * 0.092, 0.364, -0.005), // rooted deeply inside torso shoulder (zero armpit gap)
+            new THREE.Vector3(s * 0.15, 0.345, 0.016),   // sleek natural deltoid (no shoulder-pad bulge)
+            new THREE.Vector3(s * 0.174, 0.236, 0.074),  // upper arm close to body
+            new THREE.Vector3(s * 0.168, 0.168, 0.152),  // natural bent elbow (~35°)
+            new THREE.Vector3(s * 0.144, 0.138, 0.254),  // forearm angled gently toward zip bags
+            new THREE.Vector3(s * 0.118, 0.118, 0.348),  // wrist at world Y ~0.955m (hands rest cleanly over 0.86m bags)
+          ];
 
+      const fullCurve = new THREE.CatmullRomCurve3(pts);
+      const sleevePts = Array.from({ length: 18 }, (_, i) => fullCurve.getPointAt((i / 17) * 0.88));
+      const cuffPts = Array.from({ length: 6 }, (_, i) => fullCurve.getPointAt(0.87 + (i / 5) * 0.13));
+
+      const sleeveCurve = new THREE.CatmullRomCurve3(sleevePts);
+      const cuffCurve = new THREE.CatmullRomCurve3(cuffPts);
+
+      const sleeveRadius = (t) => {
+        // Sleek natural hoodie sleeve taper (no bulbous shoulder cap)
+        if (t < 0.2) return 0.044 + (t / 0.2) * 0.006;
+        if (t < 0.55) return 0.05 - ((t - 0.2) / 0.35) * 0.007;
+        return 0.043 - ((t - 0.55) / 0.45) * 0.008;
+      };
+      const cuffRadius = (t) => 0.035 - t * 0.005;
+
+      const sleeveGeo = createOrganicSleeveGeometry(sleeveCurve, sleeveRadius, 24, 18);
+      const cuffGeo = createOrganicSleeveGeometry(cuffCurve, cuffRadius, 8, 16);
+
+      const wristPos = fullCurve.getPointAt(1.0);
+      const wristTan = fullCurve.getTangentAt(1.0).normalize();
+      const handQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, -1, 0), wristTan);
+
+      return { sleeveGeo, cuffGeo, wristPos, handQuat };
+    };
+
+    const armsStanding = {
+      left: makeArmSet(-1, false),
+      right: makeArmSet(1, false),
+    };
+    const armsSeated = {
+      left: makeArmSet(-1, true),
+      right: makeArmSet(1, true),
+    };
+
+    // Sculpted organic human palm (narrow tapered wrist -> fuller metacarpals -> smooth knuckle arch)
     const palmShape = new THREE.Shape();
-    palmShape.moveTo(-0.021, 0.0);
-    palmShape.lineTo(0.021, 0.0);
-    palmShape.bezierCurveTo(0.029, -0.012, 0.03, -0.034, 0.026, -0.048);
-    palmShape.bezierCurveTo(0.016, -0.055, -0.016, -0.055, -0.026, -0.048);
-    palmShape.bezierCurveTo(-0.031, -0.032, -0.029, -0.012, -0.021, 0.0);
+    palmShape.moveTo(-0.02, 0.006);
+    palmShape.lineTo(0.02, 0.006);
+    palmShape.bezierCurveTo(0.028, -0.01, 0.031, -0.036, 0.026, -0.052);
+    palmShape.bezierCurveTo(0.014, -0.059, -0.014, -0.059, -0.026, -0.052);
+    palmShape.bezierCurveTo(-0.031, -0.034, -0.028, -0.01, -0.02, 0.006);
     const palmGeo = new THREE.ExtrudeGeometry(palmShape, {
-      depth: 0.011,
+      depth: 0.012,
       bevelEnabled: true,
-      bevelThickness: 0.0055,
-      bevelSize: 0.004,
-      bevelSegments: 3,
+      bevelThickness: 0.0065,
+      bevelSize: 0.0045,
+      bevelSegments: 4,
     });
-    palmGeo.translate(0, 0, -0.0055);
+    palmGeo.translate(0, 0, -0.006);
+
+    // Tapered organic finger phalanges (proximal, middle, distal fingertip)
+    const phalanxProxGeo = createTaperedPhalanxGeometry(0.0066, 0.0056, 0.021);
+    const phalanxMidGeo = createTaperedPhalanxGeometry(0.0055, 0.0047, 0.015);
+    const phalanxTipGeo = createTaperedPhalanxGeometry(0.0047, 0.0036, 0.012);
+    const thumbProxGeo = createTaperedPhalanxGeometry(0.008, 0.0068, 0.019);
+    const thumbTipGeo = createTaperedPhalanxGeometry(0.0066, 0.0048, 0.015);
 
     const thighGeo = new THREE.LatheGeometry(
       [
@@ -643,10 +738,14 @@ function useCharacterAssets() {
       hoodGeo,
       pocketLeftGeo,
       pocketRightGeo,
-      upperSleeveGeo,
-      forearmSleeveGeo,
-      cuffGeo,
+      armsStanding,
+      armsSeated,
       palmGeo,
+      phalanxProxGeo,
+      phalanxMidGeo,
+      phalanxTipGeo,
+      thumbProxGeo,
+      thumbTipGeo,
       thighGeo,
       calfGeo,
       soleGeo,
@@ -768,8 +867,8 @@ function ClosedHoodieTorso({ assets, slim = false }) {
       <mesh
         geometry={assets.hemGeo}
         material={m.hoodie}
-        position={[0, -0.008, 0]}
-        scale={[1.01, 1.05, 0.67]}
+        position={[0, -0.022, 0]}
+        scale={[1.02, 1.32, 0.69]}
         castShadow
       />
       <mesh geometry={assets.zipperGeo} material={m.zipper} />
@@ -808,70 +907,121 @@ function ClosedHoodieTorso({ assets, slim = false }) {
   );
 }
 
-// Seamless articulated hoodie arm + ribbed cuff + 5-finger organic hand
+// Continuous organic hoodie arm + ribbed cuff + anatomical 3-joint human 5-finger hand
 function ArticulatedArm({ assets, side = -1, pose = 'standing', slim = false }) {
   const { materials: m } = assets;
-  const xBase = side * (slim ? 0.142 : 0.158);
   const isSeated = pose === 'seated';
+  const armSet = isSeated ? assets.armsSeated : assets.armsStanding;
+  const arm = side === -1 ? armSet.left : armSet.right;
+
+  // Natural finger proportions & curl angles (typing arch when seated, bag-handling curve when standing)
+  const fingers = [
+    {
+      name: 'index',
+      x: -0.02,
+      y: -0.052,
+      scale: 0.96,
+      splay: -0.08,
+      c1: isSeated ? 0.34 : 0.24,
+      c2: isSeated ? 0.56 : 0.36,
+      c3: isSeated ? 0.42 : 0.28,
+    },
+    {
+      name: 'middle',
+      x: -0.0065,
+      y: -0.055,
+      scale: 1.05,
+      splay: -0.01,
+      c1: isSeated ? 0.38 : 0.28,
+      c2: isSeated ? 0.62 : 0.4,
+      c3: isSeated ? 0.46 : 0.32,
+    },
+    {
+      name: 'ring',
+      x: 0.007,
+      y: -0.053,
+      scale: 0.98,
+      splay: 0.05,
+      c1: isSeated ? 0.42 : 0.32,
+      c2: isSeated ? 0.64 : 0.44,
+      c3: isSeated ? 0.48 : 0.34,
+    },
+    {
+      name: 'pinky',
+      x: 0.02,
+      y: -0.049,
+      scale: 0.8,
+      splay: 0.12,
+      c1: isSeated ? 0.46 : 0.36,
+      c2: isSeated ? 0.66 : 0.48,
+      c3: isSeated ? 0.5 : 0.36,
+    },
+  ];
 
   return (
-    <group position={[xBase, 0.372, 0.006]}>
-      <mesh material={m.hoodie} scale={[0.84, 0.92, 0.88]} castShadow>
-        <sphereGeometry args={[slim ? 0.044 : 0.048, 12, 12]} />
-      </mesh>
+    <group scale={[slim ? 0.94 : 1, 1, 1]}>
+      {/* Single continuous organic fleece sleeve (zero shoulder horns or elbow seams) */}
+      <mesh geometry={arm.sleeveGeo} material={m.hoodie} castShadow receiveShadow />
+      {/* Seamless ribbed elastic wrist cuff */}
+      <mesh geometry={arm.cuffGeo} material={m.hoodieRib} castShadow />
 
-      <group rotation={[isSeated ? -0.46 : -0.34, 0, side * -0.05]}>
-        <mesh geometry={assets.upperSleeveGeo} material={m.hoodie} position={[0, -0.115, 0]} castShadow />
-
-        <group position={[0, -0.22, 0]}>
-          <mesh material={m.hoodie} castShadow>
-            <sphereGeometry args={[slim ? 0.043 : 0.046, 12, 12]} />
+      {/* Anatomical human 5-finger hand aligned smoothly to wrist direction */}
+      <group position={arm.wristPos} quaternion={arm.handQuat}>
+        {/* Fine wrist roll so palms face naturally downward over keys / inward over bags */}
+        <group rotation={[isSeated ? 0.36 : 0.18, side * (isSeated ? -0.18 : -0.32), 0]}>
+          {/* Smooth tapered wrist entering the ribbed cuff */}
+          <mesh material={m.skin} position={[0, 0.008, 0]} scale={[1.0, 1.0, 0.72]} castShadow>
+            <cylinderGeometry args={[0.022, 0.024, 0.028, 14]} />
           </mesh>
 
-          <group rotation={[isSeated ? -1.44 : -0.92, 0, side * (isSeated ? 0.22 : 0.16)]}>
-            <mesh geometry={assets.forearmSleeveGeo} material={m.hoodie} position={[0, -0.105, 0]} castShadow />
-            <mesh geometry={assets.cuffGeo} material={m.hoodieRib} position={[0, -0.218, 0]} castShadow />
+          {/* Organic beveled palm */}
+          <mesh geometry={assets.palmGeo} material={m.skin} castShadow receiveShadow />
 
-            <group position={[0, -0.236, 0.002]} rotation={[isSeated ? 0.22 : 0.34, side * -0.14, 0]}>
-              <mesh material={m.skin} position={[0, 0.008, 0]} scale={[0.92, 0.65, 0.65]}>
-                <sphereGeometry args={[0.019, 10, 8]} />
-              </mesh>
-              <mesh geometry={assets.palmGeo} material={m.skin} castShadow />
+          {/* Soft thenar muscle pad at thumb base (gives genuine human palm contour) */}
+          <mesh
+            material={m.skin}
+            position={[-side * 0.017, -0.022, 0.007]}
+            scale={[0.85, 1.25, 0.65]}
+            castShadow
+          >
+            <sphereGeometry args={[0.015, 12, 10]} />
+          </mesh>
 
-              <group position={[-side * 0.024, -0.016, 0.006]} rotation={[0.28, side * -0.32, -side * 0.56]}>
-                <mesh material={m.skin} position={[0, -0.012, 0]} castShadow>
-                  <capsuleGeometry args={[0.0072, 0.014, 5, 8]} />
-                </mesh>
-                <group position={[0, -0.023, 0]} rotation={[0.38, 0, side * 0.22]}>
-                  <mesh material={m.skin} position={[0, -0.009, 0]} castShadow>
-                    <capsuleGeometry args={[0.0062, 0.011, 5, 8]} />
-                  </mesh>
-                </group>
-              </group>
-
-              {[
-                { name: 'index', offset: -0.019, len1: 0.017, len2: 0.013, r: 0.006, curl1: 0.28, curl2: 0.42 },
-                { name: 'middle', offset: -0.006, len1: 0.019, len2: 0.014, r: 0.0062, curl1: 0.32, curl2: 0.46 },
-                { name: 'ring', offset: 0.007, len1: 0.017, len2: 0.013, r: 0.0058, curl1: 0.36, curl2: 0.5 },
-                { name: 'pinky', offset: 0.019, len1: 0.013, len2: 0.01, r: 0.005, curl1: 0.4, curl2: 0.52 },
-              ].map((f) => (
-                <group
-                  key={f.name}
-                  position={[side * f.offset, -0.048, 0.001]}
-                  rotation={[f.curl1, 0, side * f.offset * 1.4]}
-                >
-                  <mesh material={m.skin} position={[0, -f.len1 * 0.5, 0]} castShadow>
-                    <capsuleGeometry args={[f.r, f.len1, 5, 8]} />
-                  </mesh>
-                  <group position={[0, -f.len1 - 0.002, 0]} rotation={[f.curl2, 0, 0]}>
-                    <mesh material={m.skin} position={[0, -f.len2 * 0.5, 0]} castShadow>
-                      <capsuleGeometry args={[f.r * 0.86, f.len2, 5, 8]} />
-                    </mesh>
-                  </group>
-                </group>
-              ))}
+          {/* Articulated 2-phalanx opposable thumb on inner palm side */}
+          <group
+            position={[-side * 0.023, -0.022, 0.005]}
+            rotation={[isSeated ? 0.34 : 0.28, side * -0.42, -side * 0.62]}
+          >
+            <mesh geometry={assets.thumbProxGeo} material={m.skin} castShadow />
+            <group position={[0, -0.017, 0]} rotation={[0.38, 0, side * 0.24]}>
+              <mesh geometry={assets.thumbTipGeo} material={m.skin} castShadow />
             </group>
           </group>
+
+          {/* Four 3-phalanx human fingers with knuckle bridge & natural curvature */}
+          {fingers.map((f) => (
+            <group
+              key={f.name}
+              position={[side * f.x, f.y, 0.001]}
+              rotation={[f.c1, 0, side * f.splay]}
+              scale={[f.scale, f.scale, f.scale]}
+            >
+              {/* Soft knuckle transition */}
+              <mesh material={m.skin} scale={[1.0, 0.9, 0.95]}>
+                <sphereGeometry args={[0.0068, 8, 8]} />
+              </mesh>
+              {/* Proximal phalanx */}
+              <mesh geometry={assets.phalanxProxGeo} material={m.skin} castShadow />
+              {/* Middle phalanx */}
+              <group position={[0, -0.019, 0]} rotation={[f.c2, 0, 0]}>
+                <mesh geometry={assets.phalanxMidGeo} material={m.skin} castShadow />
+                {/* Distal fingertip phalanx */}
+                <group position={[0, -0.0135, 0]} rotation={[f.c3, 0, 0]}>
+                  <mesh geometry={assets.phalanxTipGeo} material={m.skin} castShadow />
+                </group>
+              </group>
+            </group>
+          ))}
         </group>
       </group>
     </group>
@@ -933,8 +1083,8 @@ function StandingOperator({ assets, position, rotationY = 0, heightScale = 1, tu
         </group>
       ))}
 
-      <mesh material={m.pants} position={[0, 0.855, 0]} scale={[1.04, 0.65, 0.68]} castShadow>
-        <sphereGeometry args={[0.158, 16, 12]} />
+      <mesh material={m.pants} position={[0, 0.875, 0]} scale={[1.12, 0.82, 0.76]} castShadow>
+        <sphereGeometry args={[0.16, 16, 12]} />
       </mesh>
 
       <group position={[0, 0.895, 0]} rotation={[0.16, 0, 0]}>
