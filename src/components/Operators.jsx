@@ -302,6 +302,120 @@ function createOrganicFingerGeometry(curve, rBase, rTip, tubularSegs = 22, radia
   return geo;
 }
 
+// Parametric ergonomic safety-shoe last helpers (shared across outsole, midsole, upper, toe cap & heel counter)
+function shoeLastZ(u) {
+  return -0.092 + u * 0.244; // total length 24.4 cm: heel -0.092 -> toe +0.152
+}
+
+function shoeLastHalfWidth(u) {
+  // Smooth anatomical work-shoe footprint (wide comfortable safety toe, zero sandal overhang)
+  const capHeel = Math.pow(Math.min(1, u / 0.14), 0.52);
+  const capToe = Math.pow(Math.min(1, (1 - u) / 0.16), 0.55);
+  const base =
+    0.037 +
+    0.003 * Math.sin(u * Math.PI) +
+    0.01 * Math.exp(-Math.pow((u - 0.72) / 0.2, 2)) -
+    0.0035 * Math.exp(-Math.pow((u - 0.38) / 0.12, 2));
+  return Math.max(0.0004, base * capHeel * capToe);
+}
+
+function shoeUpperTopY(u) {
+  // Closed athletic-work safety boot silhouette: cupped heel -> ankle collar -> raised tongue -> sloped vamp -> domed safety toe
+  if (u < 0.08) {
+    const t = u / 0.08;
+    return 0.038 + (0.104 - 0.038) * Math.pow(t, 0.45);
+  }
+  if (u < 0.24) {
+    const t = (u - 0.08) / 0.16;
+    return 0.104 - 0.007 * Math.sin(t * Math.PI);
+  }
+  if (u < 0.44) {
+    const t = (u - 0.24) / 0.2;
+    return 0.104 + 0.005 * Math.sin(t * Math.PI);
+  }
+  if (u < 0.76) {
+    const t = (u - 0.44) / 0.32;
+    const s = t * t * (3 - 2 * t);
+    return 0.104 + (0.068 - 0.104) * s;
+  }
+  const t = (u - 0.76) / 0.24;
+  return 0.036 + (0.068 - 0.036) * Math.sqrt(Math.max(0.0001, 1 - Math.pow(t, 2.2)));
+}
+
+function shoeMidsoleTopY(u) {
+  // Cushioned ergonomic heel-to-toe drop + subtle forefoot toe-spring
+  const heelDrop = 0.005 * Math.exp(-Math.pow(u / 0.35, 2));
+  const toeSpring = u > 0.76 ? Math.pow((u - 0.76) / 0.24, 1.8) * 0.011 : 0;
+  return 0.031 + heelDrop + toeSpring;
+}
+
+// Loft a watertight 3D shoe-last section between uMin and uMax
+function createShoeLoftGeometry({
+  uMin = 0,
+  uMax = 1,
+  segsU = 28,
+  segsV = 22,
+  widthScale = 1,
+  yBotFn,
+  yTopFn,
+  sideFullness = 0.74,
+  lugRipples = false,
+  capEnds = true,
+}) {
+  const positions = [];
+  const uvs = [];
+  const indices = [];
+
+  for (let iu = 0; iu <= segsU; iu++) {
+    const tu = iu / segsU;
+    const u = uMin + (uMax - uMin) * tu;
+    const z = shoeLastZ(u);
+    let hw = shoeLastHalfWidth(u) * widthScale;
+    if (capEnds && ((uMin === 0 && iu === 0) || (uMax === 1 && iu === segsU))) {
+      hw = 0.0003;
+    }
+    const yBot = yBotFn(u);
+    const yTop = Math.max(yBot + 0.001, yTopFn(u));
+    const midY = (yBot + yTop) * 0.5;
+    const halfH = (yTop - yBot) * 0.5;
+    const lug = lugRipples && u > 0.06 && u < 0.94 ? Math.sin(u * Math.PI * 18) * 0.0014 : 0;
+
+    for (let iv = 0; iv <= segsV; iv++) {
+      const v = iv / segsV;
+      const a = v * Math.PI * 2; // 0 = right mid, PI/2 = top center, PI = left mid, 3PI/2 = bottom center
+      const cosA = Math.cos(a);
+      const sinA = Math.sin(a);
+      const x = Math.sign(cosA) * Math.pow(Math.abs(cosA), sideFullness) * (hw + lug);
+      let y;
+      if (sinA >= 0) {
+        y = midY + Math.pow(sinA, 0.82) * halfH;
+      } else {
+        // Flat stable bottom sitting cleanly on the floor or midsole
+        y = midY - Math.pow(-sinA, 0.42) * halfH;
+      }
+      positions.push(x, y, z);
+      uvs.push(tu, v);
+    }
+  }
+
+  for (let iu = 0; iu < segsU; iu++) {
+    for (let iv = 0; iv < segsV; iv++) {
+      const a = iu * (segsV + 1) + iv;
+      const b = (iu + 1) * (segsV + 1) + iv;
+      const c = (iu + 1) * (segsV + 1) + (iv + 1);
+      const d = iu * (segsV + 1) + (iv + 1);
+      indices.push(a, d, b, b, d, c);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 // Shared character geometries & calibrated studio PBR materials (built once for locked 60 FPS)
 function useCharacterAssets() {
   return useMemo(() => {
@@ -649,20 +763,116 @@ function useCharacterAssets() {
       18
     );
 
-    const soleShape = new THREE.Shape();
-    soleShape.moveTo(-0.045, -0.085);
-    soleShape.bezierCurveTo(-0.052, -0.01, -0.054, 0.075, -0.035, 0.125);
-    soleShape.bezierCurveTo(-0.015, 0.15, 0.015, 0.15, 0.035, 0.125);
-    soleShape.bezierCurveTo(0.054, 0.075, 0.052, -0.01, 0.045, -0.085);
-    soleShape.bezierCurveTo(0.035, -0.112, -0.035, -0.112, -0.045, -0.085);
-    const soleGeo = new THREE.ExtrudeGeometry(soleShape, {
-      depth: 0.016,
-      bevelEnabled: true,
-      bevelThickness: 0.004,
-      bevelSize: 0.003,
-      bevelSegments: 2,
+    // Realistic sculpted ergonomic industrial safety shoe geometries (shared last, zero overhang)
+    const shoeOutsoleGeo = createShoeLoftGeometry({
+      uMin: 0,
+      uMax: 1,
+      segsU: 30,
+      segsV: 20,
+      widthScale: 1.055,
+      yBotFn: (u) => (u > 0.78 ? Math.pow((u - 0.78) / 0.22, 1.8) * 0.01 : 0.0),
+      yTopFn: (u) => 0.015 + (u > 0.78 ? Math.pow((u - 0.78) / 0.22, 1.8) * 0.011 : 0),
+      sideFullness: 0.62,
+      lugRipples: true,
     });
-    soleGeo.rotateX(Math.PI / 2);
+
+    const shoeMidsoleGeo = createShoeLoftGeometry({
+      uMin: 0,
+      uMax: 1,
+      segsU: 28,
+      segsV: 20,
+      widthScale: 1.03,
+      yBotFn: (u) => 0.012 + (u > 0.78 ? Math.pow((u - 0.78) / 0.22, 1.8) * 0.01 : 0),
+      yTopFn: shoeMidsoleTopY,
+      sideFullness: 0.68,
+    });
+
+    const shoeUpperGeo = createShoeLoftGeometry({
+      uMin: 0.01,
+      uMax: 0.995,
+      segsU: 32,
+      segsV: 24,
+      widthScale: 1.0,
+      yBotFn: (u) => shoeMidsoleTopY(u) - 0.007,
+      yTopFn: shoeUpperTopY,
+      sideFullness: 0.78,
+    });
+
+    const shoeToeCapGeo = createShoeLoftGeometry({
+      uMin: 0.74,
+      uMax: 1.0,
+      segsU: 14,
+      segsV: 20,
+      widthScale: 1.028,
+      yBotFn: (u) => shoeMidsoleTopY(u) - 0.006,
+      yTopFn: (u) => {
+        const blend = smooth(0.74, 0.82, u);
+        return shoeUpperTopY(u) + 0.0022 * blend;
+      },
+      sideFullness: 0.76,
+    });
+
+    const shoeHeelCounterGeo = createShoeLoftGeometry({
+      uMin: 0.0,
+      uMax: 0.24,
+      segsU: 12,
+      segsV: 18,
+      widthScale: 1.035,
+      yBotFn: (u) => shoeMidsoleTopY(u) - 0.005,
+      yTopFn: (u) => 0.068 - 0.014 * Math.pow(u / 0.24, 1.6),
+      sideFullness: 0.72,
+    });
+
+    // Padded ergonomic ankle collar ring hugging the pant cuff cleanly
+    const collarPts = [];
+    for (let i = 0; i < 28; i++) {
+      const a = (i / 28) * Math.PI * 2;
+      const cx = Math.sin(a) * 0.044;
+      const cz = -0.022 + Math.cos(a) * 0.056;
+      const cy = 0.098 + Math.cos(a) * 0.006 + (Math.cos(a) < 0 ? 0.008 * -Math.cos(a) : 0);
+      collarPts.push(new THREE.Vector3(cx, cy, cz));
+    }
+    const shoeCollarGeo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(collarPts, true), 32, 0.0115, 10, true);
+
+    // Crisscrossed round tubular safety shoelaces along the sloped vamp
+    const shoeLaceGeos = [];
+    const laceUs = [0.46, 0.54, 0.62, 0.7];
+    for (let i = 0; i < laceUs.length; i++) {
+      const u0 = laceUs[i];
+      const u1 = Math.min(0.73, u0 + 0.055);
+      const z0 = shoeLastZ(u0);
+      const z1 = shoeLastZ(u1);
+      const y0 = shoeUpperTopY(u0) + 0.0025;
+      const y1 = shoeUpperTopY(u1) + 0.0025;
+      const w0 = shoeLastHalfWidth(u0) * 0.52;
+      const w1 = shoeLastHalfWidth(u1) * 0.52;
+      const yMid = (y0 + y1) * 0.5 + 0.0038;
+      const zMid = (z0 + z1) * 0.5;
+      shoeLaceGeos.push(
+        new THREE.TubeGeometry(
+          new THREE.CatmullRomCurve3([
+            new THREE.Vector3(-w0, y0 - 0.002, z0),
+            new THREE.Vector3(0, yMid, zMid),
+            new THREE.Vector3(w1, y1 - 0.002, z1),
+          ]),
+          10,
+          0.0024,
+          6,
+          false
+        ),
+        new THREE.TubeGeometry(
+          new THREE.CatmullRomCurve3([
+            new THREE.Vector3(w0, y0 - 0.002, z0),
+            new THREE.Vector3(0, yMid + 0.001, zMid),
+            new THREE.Vector3(-w1, y1 - 0.002, z1),
+          ]),
+          10,
+          0.0024,
+          6,
+          false
+        )
+      );
+    }
 
     const hairnetTex = createHairnetPleatTexture();
     const hairBumpTex = createHairBumpTexture();
@@ -782,20 +992,28 @@ function useCharacterAssets() {
         metalness: 0,
         sheen: 0.18,
       }),
-      // Comfortable ergonomic industrial safety shoes (dark technical upper, reinforced toe cap, cushioned midsole)
-      shoeUpper: new THREE.MeshStandardMaterial({
-        color: '#252a32',
-        roughness: 0.78,
-        metalness: 0.04,
+      // Realistic ergonomic industrial safety shoes (matte nubuck/mesh upper, composite toe cap, cushioned midsole, lugged outsole)
+      shoeUpper: new THREE.MeshPhysicalMaterial({
+        color: '#2b313a',
+        roughness: 0.84,
+        metalness: 0.03,
+        sheen: 0.18,
+        sheenRoughness: 0.88,
+      }),
+      shoeCollar: new THREE.MeshPhysicalMaterial({
+        color: '#1e232b',
+        roughness: 0.88,
+        metalness: 0.02,
+        sheen: 0.14,
       }),
       shoeToeCap: new THREE.MeshStandardMaterial({
-        color: '#171a20',
-        roughness: 0.62,
+        color: '#191d24',
+        roughness: 0.56,
         metalness: 0.08,
       }),
       shoeMidsole: new THREE.MeshStandardMaterial({
-        color: '#4e5663',
-        roughness: 0.84,
+        color: '#525b68',
+        roughness: 0.82,
         metalness: 0.02,
       }),
       shoeOutsole: new THREE.MeshStandardMaterial({
@@ -803,10 +1021,20 @@ function useCharacterAssets() {
         roughness: 0.94,
         metalness: 0,
       }),
+      shoeLace: new THREE.MeshStandardMaterial({
+        color: '#181b20',
+        roughness: 0.9,
+        metalness: 0,
+      }),
+      shoeEyelet: new THREE.MeshStandardMaterial({
+        color: '#8f99a8',
+        roughness: 0.35,
+        metalness: 0.72,
+      }),
       shoeAccent: new THREE.MeshStandardMaterial({
         color: '#d99b1e',
-        roughness: 0.68,
-        metalness: 0.04,
+        roughness: 0.62,
+        metalness: 0.06,
       }),
     };
 
@@ -836,7 +1064,13 @@ function useCharacterAssets() {
       fingersSeated,
       thighGeo,
       calfGeo,
-      soleGeo,
+      shoeOutsoleGeo,
+      shoeMidsoleGeo,
+      shoeUpperGeo,
+      shoeToeCapGeo,
+      shoeHeelCounterGeo,
+      shoeCollarGeo,
+      shoeLaceGeos,
       materials,
     };
   }, []);
@@ -1080,42 +1314,60 @@ function ArticulatedArm({ assets, side = -1, pose = 'standing', slim = false }) 
   );
 }
 
-// Comfortable ergonomic athletic-style industrial safety shoe (composite toe cap + cushioned midsole + anti-slip outsole)
+// Realistic sculpted ergonomic athletic-work industrial safety shoe (closed last, composite toe, cushioned midsole, lugged outsole, crisscrossed laces)
 function SafetyShoe({ assets, position }) {
   const { materials: m } = assets;
+  const eyeletUs = [0.46, 0.54, 0.62, 0.7];
+
   return (
     <group position={position}>
-      {/* Slip-resistant dark rubber outsole */}
-      <mesh geometry={assets.soleGeo} material={m.shoeOutsole} position={[0, 0.017, 0.02]} scale={[1.04, 0.85, 1.03]} castShadow />
-      {/* Thick cushioned ergonomic EVA midsole */}
-      <mesh geometry={assets.soleGeo} material={m.shoeMidsole} position={[0, 0.032, 0.02]} scale={[1.02, 0.9, 1.01]} castShadow />
-      {/* Subtle safety-amber comfort heel stabilizer accent */}
-      <RoundedBox args={[0.094, 0.011, 0.068]} radius={0.004} smoothness={2} position={[0, 0.028, -0.046]} material={m.shoeAccent} />
-      {/* Dark charcoal technical upper */}
-      <mesh material={m.shoeUpper} position={[0, 0.052, 0.014]} scale={[0.92, 0.68, 1.84]} castShadow receiveShadow>
-        <sphereGeometry args={[0.056, 14, 12]} />
+      {/* Anti-slip lugged dark rubber outsole */}
+      <mesh geometry={assets.shoeOutsoleGeo} material={m.shoeOutsole} castShadow receiveShadow />
+      {/* Thick cushioned shock-absorbing ergonomic EVA midsole */}
+      <mesh geometry={assets.shoeMidsoleGeo} material={m.shoeMidsole} castShadow receiveShadow />
+      {/* Closed sculpted matte nubuck/mesh safety upper */}
+      <mesh geometry={assets.shoeUpperGeo} material={m.shoeUpper} castShadow receiveShadow />
+      {/* Reinforced composite safety toe cap bumper (flush with upper, zero overhang) */}
+      <mesh geometry={assets.shoeToeCapGeo} material={m.shoeToeCap} castShadow receiveShadow />
+      {/* Molded TPU heel counter stabilizer */}
+      <mesh geometry={assets.shoeHeelCounterGeo} material={m.shoeToeCap} castShadow />
+      {/* Padded ergonomic ankle collar roll + raised tongue */}
+      <mesh geometry={assets.shoeCollarGeo} material={m.shoeCollar} castShadow />
+      <mesh material={m.shoeCollar} position={[0, 0.106, 0.018]} rotation={[0.42, 0, 0]} scale={[1.05, 0.42, 0.78]} castShadow>
+        <sphereGeometry args={[0.026, 12, 10]} />
       </mesh>
-      {/* Reinforced composite safety toe cap bumper */}
-      <mesh material={m.shoeToeCap} position={[0, 0.048, 0.072]} scale={[0.9, 0.62, 1.02]} castShadow>
-        <sphereGeometry args={[0.051, 14, 12]} />
-      </mesh>
-      {/* Padded ergonomic ankle collar + heel pull tab */}
-      <mesh material={m.shoeUpper} position={[0, 0.078, -0.03]} castShadow>
-        <cylinderGeometry args={[0.046, 0.05, 0.038, 14]} />
-      </mesh>
-      <RoundedBox args={[0.014, 0.024, 0.01]} radius={0.003} smoothness={2} position={[0, 0.092, -0.076]} rotation={[-0.25, 0, 0]} material={m.shoeAccent} />
-      {/* Reinforced safety lace bars on instep */}
-      {[0.022, 0.04, 0.058].map((z, i) => (
-        <RoundedBox
-          key={i}
-          args={[0.046 - i * 0.004, 0.0055, 0.009]}
-          radius={0.002}
-          smoothness={2}
-          position={[0, 0.08 - i * 0.006, z]}
-          rotation={[0.32, 0, 0]}
-          material={m.shoeToeCap}
-        />
+      {/* Subtle amber safety heel pull loop */}
+      <RoundedBox
+        args={[0.012, 0.022, 0.008]}
+        radius={0.003}
+        smoothness={2}
+        position={[0, 0.108, -0.078]}
+        rotation={[-0.28, 0, 0]}
+        material={m.shoeAccent}
+      />
+      {/* Subtle amber safety midsole heel insert */}
+      <RoundedBox
+        args={[0.074, 0.007, 0.036]}
+        radius={0.003}
+        smoothness={2}
+        position={[0, 0.024, -0.056]}
+        material={m.shoeAccent}
+      />
+      {/* Crisscrossed tubular shoelaces */}
+      {assets.shoeLaceGeos.map((geo, i) => (
+        <mesh key={`lace-${i}`} geometry={geo} material={m.shoeLace} castShadow />
       ))}
+      {/* Subtle metallic lacing eyelets */}
+      {eyeletUs.map((u, i) => {
+        const z = shoeLastZ(u);
+        const y = shoeUpperTopY(u) - 0.001;
+        const x = shoeLastHalfWidth(u) * 0.54;
+        return [-1, 1].map((side) => (
+          <mesh key={`eyelet-${i}-${side}`} position={[side * x, y, z]} material={m.shoeEyelet}>
+            <sphereGeometry args={[0.0028, 6, 6]} />
+          </mesh>
+        ));
+      })}
     </group>
   );
 }
@@ -1167,8 +1419,8 @@ function SeatedOperator({ assets, position, rotationY = 0 }) {
   const { materials: m } = assets;
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
-      <SafetyShoe assets={assets} position={[-0.094, 0, 0.32]} />
-      <SafetyShoe assets={assets} position={[0.094, 0, 0.32]} />
+      <SafetyShoe assets={assets} position={[-0.094, 0, 0.305]} />
+      <SafetyShoe assets={assets} position={[0.094, 0, 0.305]} />
 
       {[-1, 1].map((side) => (
         <group key={`sleg-${side}`} position={[side * 0.094, 0, 0]}>
