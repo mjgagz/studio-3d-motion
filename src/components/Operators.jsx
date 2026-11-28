@@ -782,15 +782,31 @@ function useCharacterAssets() {
         metalness: 0,
         sheen: 0.18,
       }),
-      sneaker: new THREE.MeshStandardMaterial({
-        color: '#F3F4F6',
-        roughness: 0.72,
+      // Comfortable ergonomic industrial safety shoes (dark technical upper, reinforced toe cap, cushioned midsole)
+      shoeUpper: new THREE.MeshStandardMaterial({
+        color: '#252a32',
+        roughness: 0.78,
+        metalness: 0.04,
+      }),
+      shoeToeCap: new THREE.MeshStandardMaterial({
+        color: '#171a20',
+        roughness: 0.62,
+        metalness: 0.08,
+      }),
+      shoeMidsole: new THREE.MeshStandardMaterial({
+        color: '#4e5663',
+        roughness: 0.84,
+        metalness: 0.02,
+      }),
+      shoeOutsole: new THREE.MeshStandardMaterial({
+        color: '#14171c',
+        roughness: 0.94,
         metalness: 0,
       }),
-      sneakerSole: new THREE.MeshStandardMaterial({
-        color: '#E4E7ED',
-        roughness: 0.8,
-        metalness: 0,
+      shoeAccent: new THREE.MeshStandardMaterial({
+        color: '#d99b1e',
+        roughness: 0.68,
+        metalness: 0.04,
       }),
     };
 
@@ -1064,26 +1080,40 @@ function ArticulatedArm({ assets, side = -1, pose = 'standing', slim = false }) 
   );
 }
 
-function WhiteSneaker({ assets, position }) {
+// Comfortable ergonomic athletic-style industrial safety shoe (composite toe cap + cushioned midsole + anti-slip outsole)
+function SafetyShoe({ assets, position }) {
   const { materials: m } = assets;
   return (
     <group position={position}>
-      <mesh geometry={assets.soleGeo} material={m.sneakerSole} position={[0, 0.02, 0.02]} castShadow />
-      <mesh material={m.sneaker} position={[0, 0.044, 0.018]} scale={[0.88, 0.62, 1.82]} castShadow receiveShadow>
+      {/* Slip-resistant dark rubber outsole */}
+      <mesh geometry={assets.soleGeo} material={m.shoeOutsole} position={[0, 0.017, 0.02]} scale={[1.04, 0.85, 1.03]} castShadow />
+      {/* Thick cushioned ergonomic EVA midsole */}
+      <mesh geometry={assets.soleGeo} material={m.shoeMidsole} position={[0, 0.032, 0.02]} scale={[1.02, 0.9, 1.01]} castShadow />
+      {/* Subtle safety-amber comfort heel stabilizer accent */}
+      <RoundedBox args={[0.094, 0.011, 0.068]} radius={0.004} smoothness={2} position={[0, 0.028, -0.046]} material={m.shoeAccent} />
+      {/* Dark charcoal technical upper */}
+      <mesh material={m.shoeUpper} position={[0, 0.052, 0.014]} scale={[0.92, 0.68, 1.84]} castShadow receiveShadow>
         <sphereGeometry args={[0.056, 14, 12]} />
       </mesh>
-      <mesh material={m.sneaker} position={[0, 0.068, -0.028]} castShadow>
-        <cylinderGeometry args={[0.044, 0.048, 0.032, 14]} />
+      {/* Reinforced composite safety toe cap bumper */}
+      <mesh material={m.shoeToeCap} position={[0, 0.048, 0.072]} scale={[0.9, 0.62, 1.02]} castShadow>
+        <sphereGeometry args={[0.051, 14, 12]} />
       </mesh>
-      {[0.025, 0.044, 0.062].map((z, i) => (
+      {/* Padded ergonomic ankle collar + heel pull tab */}
+      <mesh material={m.shoeUpper} position={[0, 0.078, -0.03]} castShadow>
+        <cylinderGeometry args={[0.046, 0.05, 0.038, 14]} />
+      </mesh>
+      <RoundedBox args={[0.014, 0.024, 0.01]} radius={0.003} smoothness={2} position={[0, 0.092, -0.076]} rotation={[-0.25, 0, 0]} material={m.shoeAccent} />
+      {/* Reinforced safety lace bars on instep */}
+      {[0.022, 0.04, 0.058].map((z, i) => (
         <RoundedBox
           key={i}
-          args={[0.044 - i * 0.004, 0.005, 0.008]}
+          args={[0.046 - i * 0.004, 0.0055, 0.009]}
           radius={0.002}
           smoothness={2}
-          position={[0, 0.072 - i * 0.006, z]}
+          position={[0, 0.08 - i * 0.006, z]}
           rotation={[0.32, 0, 0]}
-          material={m.sneakerSole}
+          material={m.shoeToeCap}
         />
       ))}
     </group>
@@ -1105,8 +1135,8 @@ function StandingOperator({ assets, position, rotationY = 0, heightScale = 1, tu
   const { materials: m } = assets;
   return (
     <group position={position} rotation={[0, rotationY, 0]} scale={[1, heightScale, 1]}>
-      <WhiteSneaker assets={assets} position={[-0.098, 0, 0.015]} />
-      <WhiteSneaker assets={assets} position={[0.098, 0, 0.015]} />
+      <SafetyShoe assets={assets} position={[-0.098, 0, 0.015]} />
+      <SafetyShoe assets={assets} position={[0.098, 0, 0.015]} />
 
       {[-1, 1].map((side) => (
         <group key={`leg-${side}`} position={[side * 0.098, 0, 0]}>
@@ -1137,8 +1167,8 @@ function SeatedOperator({ assets, position, rotationY = 0 }) {
   const { materials: m } = assets;
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
-      <WhiteSneaker assets={assets} position={[-0.094, 0, 0.32]} />
-      <WhiteSneaker assets={assets} position={[0.094, 0, 0.32]} />
+      <SafetyShoe assets={assets} position={[-0.094, 0, 0.32]} />
+      <SafetyShoe assets={assets} position={[0.094, 0, 0.32]} />
 
       {[-1, 1].map((side) => (
         <group key={`sleg-${side}`} position={[side * 0.094, 0, 0]}>
