@@ -302,6 +302,170 @@ function createOrganicFingerGeometry(curve, rBase, rTip, tubularSegs = 22, radia
   return geo;
 }
 
+// Build a single continuous tailored trouser leg along a 3D curve (zero knee ball-joints, natural fabric taper & hem)
+function createTailoredLegGeometry(curve, radiusFn, tubularSegs = 28, radialSegs = 20) {
+  const frames = curve.computeFrenetFrames(tubularSegs, false);
+  const positions = [];
+  const uvs = [];
+  const indices = [];
+
+  for (let i = 0; i <= tubularSegs; i++) {
+    const t = i / tubularSegs;
+    const center = curve.getPointAt(t);
+    const N = frames.normals[i];
+    const B = frames.binormals[i];
+    const [rx, rz] = radiusFn(t);
+
+    for (let j = 0; j <= radialSegs; j++) {
+      const v = (j / radialSegs) * Math.PI * 2;
+      const sin = Math.sin(v);
+      const cos = -Math.cos(v);
+      // Slight fabric fullness at the ankle break (t > 0.88) so the cuff drapes naturally over the shoe collar
+      const hemFlare = t > 0.88 ? 1 + ((t - 0.88) / 0.12) * 0.04 : 1;
+      const px = center.x + (cos * rx * N.x + sin * rz * B.x) * hemFlare;
+      const py = center.y + (cos * rx * N.y + sin * rz * B.y) * hemFlare;
+      const pz = center.z + (cos * rx * N.z + sin * rz * B.z) * hemFlare;
+      positions.push(px, py, pz);
+      uvs.push(t, j / radialSegs);
+    }
+  }
+
+  for (let i = 0; i < tubularSegs; i++) {
+    for (let j = 0; j < radialSegs; j++) {
+      const a = i * (radialSegs + 1) + j;
+      const b = (i + 1) * (radialSegs + 1) + j;
+      const c = (i + 1) * (radialSegs + 1) + (j + 1);
+      const d = i * (radialSegs + 1) + (j + 1);
+      indices.push(a, b, d, b, c, d);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// Tailored flat-front industrial trouser hip/pelvis block (sleek waist-to-hip transition, zero puffy diaper bulge)
+function createTailoredPelvisGeometry({
+  yBottom = 0.775,
+  yTop = 0.935,
+  waistHalfX = 0.146,
+  hipHalfX = 0.154,
+  frontZ = 0.088,
+  backZ = 0.096,
+  segsY = 14,
+  segsA = 28,
+} = {}) {
+  const positions = [];
+  const uvs = [];
+  const indices = [];
+
+  for (let iy = 0; iy <= segsY; iy++) {
+    const v = iy / segsY;
+    const y = yBottom + (yTop - yBottom) * v;
+    // Sleek tailored silhouette: slight inward taper at bottom into legs, slim flat waist at top
+    const bottomTaper = v < 0.22 ? 0.86 + (v / 0.22) * 0.14 : 1.0;
+    const topTaper = v > 0.75 ? 1 - ((v - 0.75) / 0.25) * 0.05 : 1.0;
+    const hw = (hipHalfX + (waistHalfX - hipHalfX) * v) * bottomTaper * topTaper;
+    const fz = frontZ * (v < 0.2 ? 0.82 + (v / 0.2) * 0.18 : 1.0);
+    // Subtle anatomical seat contour on back (-Z), never a round balloon
+    const seatCurve = Math.sin(v * Math.PI) * 0.008;
+    const bz = (backZ + seatCurve) * (v < 0.2 ? 0.82 + (v / 0.2) * 0.18 : 1.0);
+
+    for (let ia = 0; ia <= segsA; ia++) {
+      const u = ia / segsA;
+      const a = u * Math.PI * 2;
+      const cosA = Math.cos(a);
+      const sinA = Math.sin(a);
+      // Superellipse cross-section for flat tailored front/back and clean side hips
+      const x = Math.sign(cosA) * Math.pow(Math.abs(cosA), 0.78) * hw;
+      const depthZ = sinA >= 0 ? fz : bz;
+      const z = Math.sign(sinA) * Math.pow(Math.abs(sinA), 0.82) * depthZ;
+      positions.push(x, y, z);
+      uvs.push(u, v);
+    }
+  }
+
+  for (let iy = 0; iy < segsY; iy++) {
+    for (let ia = 0; ia < segsA; ia++) {
+      const a = iy * (segsA + 1) + ia;
+      const b = a + 1;
+      const c = a + (segsA + 1);
+      const d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// Curved flush rear patch pocket following the exact contoured pelvis surface (zero boxy protruding wings)
+function createCurvedRearPocketGeometry(side) {
+  const segsU = 10;
+  const segsV = 8;
+  const positions = [];
+  const uvs = [];
+  const indices = [];
+
+  const yBottom = 0.78;
+  const yTop = 0.935;
+  const waistHalfX = 0.148;
+  const hipHalfX = 0.156;
+  const backZ = 0.095;
+  const vMin = 0.2;
+  const vMax = 0.76;
+  // Back center is angle 3*PI/2 (sinA = -1, cosA = 0); place left/right pockets cleanly on either side
+  const aStart = side === -1 ? Math.PI * 1.18 : Math.PI * 1.56;
+  const aEnd = side === -1 ? Math.PI * 1.44 : Math.PI * 1.82;
+
+  for (let iy = 0; iy <= segsV; iy++) {
+    const tv = iy / segsV;
+    const v = vMin + (vMax - vMin) * tv;
+    const y = yBottom + (yTop - yBottom) * v;
+    const bottomTaper = v < 0.22 ? 0.86 + (v / 0.22) * 0.14 : 1.0;
+    const topTaper = v > 0.75 ? 1 - ((v - 0.75) / 0.25) * 0.05 : 1.0;
+    const hw = (hipHalfX + (waistHalfX - hipHalfX) * v) * bottomTaper * topTaper + 0.0028;
+    const seatCurve = Math.sin(v * Math.PI) * 0.008;
+    const bz = (backZ + seatCurve) * (v < 0.2 ? 0.82 + (v / 0.2) * 0.18 : 1.0) + 0.0028;
+
+    for (let ix = 0; ix <= segsU; ix++) {
+      const tu = ix / segsU;
+      const a = aStart + (aEnd - aStart) * tu;
+      const cosA = Math.cos(a);
+      const sinA = Math.sin(a);
+      const x = Math.sign(cosA) * Math.pow(Math.abs(cosA), 0.78) * hw;
+      const z = Math.sign(sinA) * Math.pow(Math.abs(sinA), 0.82) * bz;
+      positions.push(x, y, z);
+      uvs.push(tu, tv);
+    }
+  }
+
+  for (let iy = 0; iy < segsV; iy++) {
+    for (let ix = 0; ix < segsU; ix++) {
+      const a = iy * (segsU + 1) + ix;
+      const b = a + 1;
+      const c = a + (segsU + 1);
+      const d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 // Parametric ergonomic safety-shoe last helpers (shared across outsole, midsole, upper, toe cap & heel counter)
 function shoeLastZ(u) {
   return -0.092 + u * 0.244; // total length 24.4 cm: heel -0.092 -> toe +0.152
@@ -744,24 +908,85 @@ function useCharacterAssets() {
       thumb: makeContinuousFinger(0.043, 0.0082, 0.0058, 0.62),
     };
 
-    const thighGeo = new THREE.LatheGeometry(
-      [
-        new THREE.Vector2(0.062, -0.19),
-        new THREE.Vector2(0.072, -0.04),
-        new THREE.Vector2(0.078, 0.14),
-        new THREE.Vector2(0.072, 0.19),
-      ],
-      18
-    );
-    const calfGeo = new THREE.LatheGeometry(
-      [
-        new THREE.Vector2(0.048, -0.19),
-        new THREE.Vector2(0.056, -0.02),
-        new THREE.Vector2(0.064, 0.16),
-        new THREE.Vector2(0.058, 0.19),
-      ],
-      18
-    );
+    // Tailored continuous industrial work trousers (sleek hip block + seamless standing & seated legs)
+    const pelvisStandingGeo = createTailoredPelvisGeometry({
+      yBottom: 0.78,
+      yTop: 0.935,
+      waistHalfX: 0.148,
+      hipHalfX: 0.156,
+      frontZ: 0.088,
+      backZ: 0.095,
+    });
+    const pelvisSeatedGeo = createTailoredPelvisGeometry({
+      yBottom: 0.455,
+      yTop: 0.59,
+      waistHalfX: 0.138,
+      hipHalfX: 0.148,
+      frontZ: 0.086,
+      backZ: 0.092,
+    });
+
+    const makeStandingLegGeo = (side) => {
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(side * 0.078, 0.865, -0.002), // seated cleanly inside tailored hip block
+        new THREE.Vector3(side * 0.084, 0.72, 0.006),   // tailored upper thigh
+        new THREE.Vector3(side * 0.088, 0.55, 0.012),   // mid thigh
+        new THREE.Vector3(side * 0.092, 0.44, 0.014),   // natural straight knee (no ball joint)
+        new THREE.Vector3(side * 0.095, 0.25, 0.004),   // tailored calf taper
+        new THREE.Vector3(side * 0.098, 0.088, -0.004), // clean straight cuff over safety shoe collar
+      ]);
+      const radiusFn = (t) => {
+        // Tailored straight-leg industrial work pants taper
+        if (t < 0.25) {
+          const k = t / 0.25;
+          return [0.076 - k * 0.005, 0.082 - k * 0.005];
+        }
+        if (t < 0.6) {
+          const k = (t - 0.25) / 0.35;
+          return [0.071 - k * 0.01, 0.077 - k * 0.011];
+        }
+        const k = (t - 0.6) / 0.4;
+        return [0.061 - k * 0.007, 0.066 - k * 0.009];
+      };
+      return createTailoredLegGeometry(curve, radiusFn, 28, 20);
+    };
+
+    const makeSeatedLegGeo = (side) => {
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(side * 0.076, 0.515, -0.025), // seated cleanly in hip block
+        new THREE.Vector3(side * 0.084, 0.512, 0.105),  // thigh resting cleanly on chair seat
+        new THREE.Vector3(side * 0.09, 0.502, 0.225),   // front thigh approaching knee
+        new THREE.Vector3(side * 0.093, 0.472, 0.282),  // natural bent knee (smooth continuous cloth bend)
+        new THREE.Vector3(side * 0.094, 0.31, 0.294),   // vertical lower leg
+        new THREE.Vector3(side * 0.094, 0.088, 0.284),  // clean straight cuff over seated safety shoe collar
+      ]);
+      const radiusFn = (t) => {
+        if (t < 0.4) {
+          const k = t / 0.4;
+          return [0.073 - k * 0.005, 0.076 - k * 0.005];
+        }
+        if (t < 0.65) {
+          const k = (t - 0.4) / 0.25;
+          return [0.068 - k * 0.007, 0.071 - k * 0.007];
+        }
+        const k = (t - 0.65) / 0.35;
+        return [0.061 - k * 0.008, 0.064 - k * 0.008];
+      };
+      return createTailoredLegGeometry(curve, radiusFn, 30, 20);
+    };
+
+    const legsStanding = {
+      left: makeStandingLegGeo(-1),
+      right: makeStandingLegGeo(1),
+    };
+    const legsSeated = {
+      left: makeSeatedLegGeo(-1),
+      right: makeSeatedLegGeo(1),
+    };
+    const rearPockets = {
+      left: createCurvedRearPocketGeometry(-1),
+      right: createCurvedRearPocketGeometry(1),
+    };
 
     // Realistic sculpted ergonomic industrial safety shoe geometries (shared last, zero overhang)
     const shoeOutsoleGeo = createShoeLoftGeometry({
@@ -1062,8 +1287,11 @@ function useCharacterAssets() {
       palmGeo,
       fingersStanding,
       fingersSeated,
-      thighGeo,
-      calfGeo,
+      pelvisStandingGeo,
+      pelvisSeatedGeo,
+      legsStanding,
+      legsSeated,
+      rearPockets,
       shoeOutsoleGeo,
       shoeMidsoleGeo,
       shoeUpperGeo,
@@ -1376,9 +1604,8 @@ function SlimCargoPocket({ assets, side = 1, position, rotation = [0, 0, 0] }) {
   const { materials: m } = assets;
   return (
     <group position={position} rotation={rotation}>
-      <RoundedBox args={[0.009, 0.138, 0.102]} radius={0.003} smoothness={2} material={m.pantsPocket} castShadow />
-      <RoundedBox args={[0.003, 0.12, 0.006]} radius={0.001} smoothness={1} position={[side * 0.005, -0.006, 0]} material={m.pants} />
-      <RoundedBox args={[0.011, 0.028, 0.106]} radius={0.003} smoothness={2} position={[side * 0.001, 0.056, 0]} material={m.pants} />
+      <RoundedBox args={[0.007, 0.128, 0.092]} radius={0.003} smoothness={2} material={m.pantsPocket} castShadow />
+      <RoundedBox args={[0.008, 0.026, 0.095]} radius={0.0025} smoothness={2} position={[side * 0.001, 0.052, 0]} material={m.pants} />
     </group>
   );
 }
@@ -1390,20 +1617,23 @@ function StandingOperator({ assets, position, rotationY = 0, heightScale = 1, tu
       <SafetyShoe assets={assets} position={[-0.098, 0, 0.015]} />
       <SafetyShoe assets={assets} position={[0.098, 0, 0.015]} />
 
-      {[-1, 1].map((side) => (
-        <group key={`leg-${side}`} position={[side * 0.098, 0, 0]}>
-          <mesh geometry={assets.calfGeo} material={m.pants} position={[0, 0.27, 0]} castShadow receiveShadow />
-          <mesh material={m.pants} position={[0, 0.46, 0.004]} castShadow>
-            <sphereGeometry args={[0.06, 12, 10]} />
-          </mesh>
-          <mesh geometry={assets.thighGeo} material={m.pants} position={[0, 0.65, 0.004]} castShadow receiveShadow />
-          <SlimCargoPocket assets={assets} side={side} position={[side * 0.068, 0.58, 0.004]} />
-        </group>
-      ))}
+      {/* Tailored flat-front hip block + seamless continuous work trouser legs */}
+      <mesh geometry={assets.pelvisStandingGeo} material={m.pants} castShadow receiveShadow />
+      <mesh geometry={assets.legsStanding.left} material={m.pants} castShadow receiveShadow />
+      <mesh geometry={assets.legsStanding.right} material={m.pants} castShadow receiveShadow />
 
-      <mesh material={m.pants} position={[0, 0.875, 0]} scale={[1.12, 0.82, 0.76]} castShadow>
-        <sphereGeometry args={[0.16, 16, 12]} />
-      </mesh>
+      {/* Flush curved rear patch pockets + slim contoured side cargo pockets */}
+      <mesh geometry={assets.rearPockets.left} material={m.pantsPocket} />
+      <mesh geometry={assets.rearPockets.right} material={m.pantsPocket} />
+      {[-1, 1].map((side) => (
+        <SlimCargoPocket
+          key={`pockets-${side}`}
+          assets={assets}
+          side={side}
+          position={[side * 0.148, 0.61, 0.01]}
+          rotation={[0, 0, side * 0.025]}
+        />
+      ))}
 
       <group position={[0, 0.895, 0]} rotation={[0.16, 0, 0]}>
         <ClosedHoodieTorso assets={assets} />
@@ -1422,20 +1652,20 @@ function SeatedOperator({ assets, position, rotationY = 0 }) {
       <SafetyShoe assets={assets} position={[-0.094, 0, 0.305]} />
       <SafetyShoe assets={assets} position={[0.094, 0, 0.305]} />
 
-      {[-1, 1].map((side) => (
-        <group key={`sleg-${side}`} position={[side * 0.094, 0, 0]}>
-          <mesh geometry={assets.calfGeo} material={m.pants} position={[0, 0.27, 0.295]} rotation={[0.08, 0, 0]} castShadow />
-          <mesh material={m.pants} position={[0, 0.485, 0.282]} castShadow>
-            <sphereGeometry args={[0.064, 12, 10]} />
-          </mesh>
-          <mesh geometry={assets.thighGeo} material={m.pants} position={[0, 0.505, 0.115]} rotation={[Math.PI / 2, 0, 0]} castShadow />
-          <SlimCargoPocket assets={assets} side={side} position={[side * 0.066, 0.505, 0.14]} rotation={[Math.PI / 2, 0, 0]} />
-        </group>
-      ))}
+      {/* Tailored seated hip block + seamless continuous bent work trouser legs */}
+      <mesh geometry={assets.pelvisSeatedGeo} material={m.pants} position={[0, 0, -0.025]} castShadow receiveShadow />
+      <mesh geometry={assets.legsSeated.left} material={m.pants} castShadow receiveShadow />
+      <mesh geometry={assets.legsSeated.right} material={m.pants} castShadow receiveShadow />
 
-      <mesh material={m.pants} position={[0, 0.525, -0.025]} scale={[1.0, 0.62, 0.72]} castShadow>
-        <sphereGeometry args={[0.155, 16, 12]} />
-      </mesh>
+      {[-1, 1].map((side) => (
+        <SlimCargoPocket
+          key={`spocket-${side}`}
+          assets={assets}
+          side={side}
+          position={[side * 0.152, 0.508, 0.135]}
+          rotation={[Math.PI / 2, 0, 0]}
+        />
+      ))}
 
       <group position={[0, 0.56, -0.025]} rotation={[0.11, 0, 0]}>
         <ClosedHoodieTorso assets={assets} slim />
